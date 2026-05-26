@@ -94,6 +94,8 @@ Debug a flaky multi-file auth regression and propose tests.
 
 Expected result:
 
+Phase 1 read-only subagents:
+
 ```text
 Subagents:
 - name: so_mapper
@@ -108,7 +110,20 @@ Subagents:
   constraints: no recursive fan-out
 ```
 
-After the agents finish, synthesize the observed failure mode, evidence, likely root cause, minimal fix path, tests to run, and remaining uncertainty before editing.
+After Phase 1, synthesize the observed failure mode, evidence, likely root cause, minimal fix path, tests to run, and remaining uncertainty before editing.
+
+Phase 2 only if safe and useful:
+
+```text
+Subagents:
+- name: so_reproducer
+  mode: workspace-write
+  scope: reproduce the narrowed failure and collect logs
+  expected output: commands, exit codes, relevant logs, scratch artifacts created/removed, uncertainty
+  constraints: no product code edits unless explicitly assigned; no recursive fan-out
+```
+
+Use `so_reproducer` only after mapper/tester narrow the scope. It may use workspace-write for temporary scratch artifacts, but it must report artifacts created or removed.
 
 ### Example: parallel subagents for branch review
 
@@ -146,4 +161,7 @@ The final response should lead with material findings. If there are no material 
 - Use `subagent-orchestrator` when the task already clearly needs execution-shape selection.
 - Stay single-threaded for tiny edits, simple questions, explicit opt-outs, child-agent tasks, and strictly linear work.
 - Prefer read-only agents first for broad investigation, review, or testing questions.
+- Treat the plugin as read-only-first: default/simple prompts do not write, spawn, or activate a global bootstrap automatically.
+- Use bounded workspace-write roles only when scoped: `so_reproducer` may collect scratch/log work after narrowing, while `so_implementer` needs explicit task scope or prior synthesis before code edits.
+- Keep destructive/external actions under host/user/approval rules.
 - Keep host repository rules, user instructions, safety, privacy, tests, and approval requirements above plugin guidance.

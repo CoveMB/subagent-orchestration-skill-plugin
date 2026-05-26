@@ -6,7 +6,9 @@ This skill plugin gives Codex a quiet, compatibility-oriented orchestration gate
 - existing orchestration, routing, bootstrap, skill-selection, and agent-management frameworks take priority,
 - simple prompts stay single-threaded unless the user asks otherwise,
 - complex prompts still receive only result/reason metadata by default,
-- bounded delegation has standing authorization when the internal decision is `parallel-subagents`,
+- default/simple prompts do not write, spawn, or activate a global bootstrap automatically,
+- when `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation,
+- still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, or unclear boundaries require it,
 - parallel subagents are used only when they add real value.
 
 It packages:
@@ -57,6 +59,19 @@ For Codex, the quiet behavior comes from three layers together:
 
 The hook does not spawn agents by itself or inject execution instructions. After the orchestration skill selects `parallel-subagents`, the assistant must call `spawn_agent` or the available subagent-spawning tool in that same turn after defining bounded roles. It should only fall back to sequential work when no spawning tool is available or higher-priority rules block spawning.
 
+Hook result mapping:
+
+| Hook result | Compatibility-gate action | Execution-shape action |
+| --- | --- | --- |
+| `single-thread-default` | `skip` | Proceed normally; do not load orchestration by default. |
+| `single-thread-likely` | `check` | Proceed normally after a short local gate check if useful; do not load orchestration by default. |
+| `orchestration-check` | `check` | Do a short local gate check; load `subagent-orchestrator` only if independent tracks are clear. |
+| `use-subagent-orchestrator` | `use-subagent-orchestrator` | Load `subagent-orchestrator` before broad work; then choose `single-thread`, `sequential-plan`, or `parallel-subagents`. |
+| `orchestration-opt-out` | `skip` | Do not load orchestration or spawn agents. |
+| `recursion-guard` | `skip` | Do not recursively orchestrate unless the parent explicitly provided bounded permission. |
+
+When loaded, `subagent-orchestrator` chooses only `single-thread`, `sequential-plan`, or `parallel-subagents`.
+
 The live harness has an opt-in contract mode for measuring that behavior end to end. Use `--hook-mode contract` to append a bounded spawn contract only for strong `use-subagent-orchestrator` decisions. Normal hook output remains metadata-only.
 
 A plugin can package the skills. The installer supports user/global skill installation and project-scoped activation, but activation is always explicit.
@@ -64,6 +79,7 @@ A plugin can package the skills. The installer supports user/global skill instal
 ## Boundary model
 
 - **Plugin-level boundary**: this plugin is an execution-shape helper only. It can help choose `single-thread`, `sequential-plan`, or `parallel-subagents`; it does not decide truth, evidence, citations, approvals, vendor trust, or test sufficiency.
+- **Write-capability boundary**: the plugin is read-only-first. The manifest keeps `Write` only for bounded workspace-write roles such as `so_implementer` or `so_reproducer` scratch/log work. Code edits require explicit task scope or prior synthesis, and destructive/external actions remain governed by host/user/approval rules.
 - **Host-repo boundary**: domain-specific user instructions, repository `AGENTS.md`, local scripts, audit requirements, and source-of-truth rules win over plugin guidance. When host repository rules are stricter, host repository rules win.
 - **Subagent-output boundary**: subagent output is work product, not evidence by itself. Required tests, citations, source checks, approvals, and audit notes still need to be performed directly.
 - **Hook boundary**: the hook reports classification metadata only. The live harness can add spawn-contract guidance for eval runs, but the hook still does not enforce truth, validate sources, authorize edits, satisfy citations, replace tests, or bypass safety/privacy/vendor/approval rules.

@@ -80,6 +80,16 @@ FALSE_POSITIVE_CASES = [
     ("Summarize the subagent-orchestrator skill behavior.", "single-thread-likely"),
     ("Review the README wording for clarity.", "single-thread-default"),
 ]
+HIGH_VALUE_EDGE_CASES = [
+    ("Audit src/auth.ts for vulnerabilities and missing tests.", "orchestration-check"),
+    (
+        "Audit authentication, API routes, and database access for security regressions and missing tests.",
+        "use-subagent-orchestrator",
+    ),
+    ("Review this README paragraph for wording clarity only. Do not inspect the repo.", "single-thread-default"),
+    ("Explain how subagents work without using them.", "single-thread-likely"),
+    ("Avoid extra agent/tool cost. Review this branch linearly.", "orchestration-opt-out"),
+]
 
 
 def hook_subprocess_environment(extra_env: dict[str, str] | None = None) -> dict[str, str]:
@@ -987,6 +997,10 @@ def test_classifier_respects_opt_out_variants() -> None:
         "Without orchestration, review this patch.",
         "Without parallel agents, investigate this failure.",
         "No parallel agents, debug this failure.",
+        "Do not spawn agents. Review this patch.",
+        "Never spawn agents. Review this patch for security risk.",
+        "No more agents. Audit this patch.",
+        "Without spawning agents, investigate this failure.",
         "Work linearly through this flaky failure.",
         "Use linear execution for this audit.",
         "Single-thread only for this review.",
@@ -1081,6 +1095,10 @@ def test_classifier_metamorphic_variants_preserve_decisions() -> None:
 
 def test_classifier_avoids_subagent_topic_false_positives() -> None:
     assert_prompt_decisions(FALSE_POSITIVE_CASES)
+
+
+def test_classifier_covers_high_value_hook_edge_cases() -> None:
+    assert_prompt_decisions(HIGH_VALUE_EDGE_CASES)
 
 
 def test_classifier_recursion_guard_variants() -> None:

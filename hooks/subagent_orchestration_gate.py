@@ -61,6 +61,17 @@ VALIDATION_TARGET_PATTERN = (
     rf"(?:{DOCUMENTATION_TERM_PATTERN}|{QA_TERM_PATTERN}|{SETUP_TERM_PATTERN}|{PLUGIN_MIGRATION_TERM_PATTERN})"
 )
 VALIDATION_VERB_PATTERN = r"\b(?:validat(?:e|ion)|ensure|verify|check|confirm|make sure)\b"
+SOURCE_FILE_PATTERN = (
+    r"\b[\w./-]+\.(?:ts|tsx|js|jsx|py|go|rs|java|rb|php|cs|cpp|c|h|md|json|ya?ml|toml)\b"
+)
+SINGLE_TARGET_SCOPE_PATTERN = r"\b(?:one|single)[- ]?(?:file|module|component|function)\b"
+LIGHTWEIGHT_TEXT_REVIEW_SUBJECT_PATTERN = (
+    r"\b(?:readme|paragraph|copy|wording|clarity|grammar|typos?|sentence)\b"
+)
+LIGHTWEIGHT_TEXT_REVIEW_VERB_PATTERN = r"\b(?:review|check|edit|proofread)\b"
+HIGH_RISK_REVIEW_TERM_PATTERN = (
+    r"\b(?:security|threat|vulnerabilit(?:y|ies)|risks?|architecture|implementation|tests?)\b"
+)
 
 
 def count_signals(text: str, signals: Iterable[SignalSet]) -> tuple[int, list[str]]:
@@ -91,6 +102,34 @@ def has_only_topic_complex_hits(hits: Iterable[str]) -> bool:
     return not unique_hits or unique_hits <= {"explicit subagents"}
 
 
+def has_single_target_review_scope(text: str, hits: Iterable[str]) -> bool:
+    unique_hits = set(hits)
+    if "review/audit" not in unique_hits:
+        return False
+    if unique_hits & {"architecture/refactor", "explicit subagents", "multi-surface scope"}:
+        return False
+
+    source_files = set(re.findall(SOURCE_FILE_PATTERN, text, flags=re.IGNORECASE))
+    if len(source_files) == 1:
+        return True
+    if len(source_files) > 1:
+        return False
+
+    return bool(re.search(SINGLE_TARGET_SCOPE_PATTERN, text, flags=re.IGNORECASE))
+
+
+def is_lightweight_text_review(text: str, hits: Iterable[str]) -> bool:
+    unique_hits = set(hits)
+    if unique_hits - {"review/audit"}:
+        return False
+    if re.search(HIGH_RISK_REVIEW_TERM_PATTERN, text, flags=re.IGNORECASE):
+        return False
+    return bool(
+        re.search(LIGHTWEIGHT_TEXT_REVIEW_VERB_PATTERN, text, flags=re.IGNORECASE)
+        and re.search(LIGHTWEIGHT_TEXT_REVIEW_SUBJECT_PATTERN, text, flags=re.IGNORECASE)
+    )
+
+
 OPTOUT_SIGNALS = (
     SignalSet("explicit user opt-out", 99, (
         r"\bdo not use sub[- ]?agents?\b",
@@ -99,6 +138,11 @@ OPTOUT_SIGNALS = (
         r"\bno sub[- ]?agents?\b",
         r"\bnever use sub[- ]?agents?\b",
         r"\bwithout sub[- ]?agents?\b",
+        r"\bdo not (?:spawn|run|delegate)(?:\s+(?:any|more|parallel))?\s+(?:sub[- ]?agents?|agents?)\b",
+        r"\bdon['’]?t (?:spawn|run|delegate)(?:\s+(?:any|more|parallel))?\s+(?:sub[- ]?agents?|agents?)\b",
+        r"\bnever (?:spawn|run|delegate)(?:\s+(?:any|more|parallel))?\s+(?:sub[- ]?agents?|agents?)\b",
+        r"\bwithout (?:spawn(?:ing)?|running|delegating)(?:\s+(?:any|more|parallel))?\s+(?:sub[- ]?agents?|agents?)\b",
+        r"\bno more (?:sub[- ]?agents?|agents?)\b",
         r"\bno parallel agents?\b",
         r"\bwithout parallel agents?\b",
         r"\bno orchestrat(?:ion|e)\b",
@@ -112,8 +156,10 @@ OPTOUT_SIGNALS = (
         r"\bdont use orchestrat(?:ion|e)\b",
         r"\bwithout orchestrat(?:ion|e)\b",
         r"\bwork linearly\b",
+        r"\b(?:work|review|debug|audit|proceed|handle)\b.{0,40}\blinearly\b",
         r"\blinear execution\b",
         r"\bsingle[- ]?thread(?:ed)? only\b",
+        r"\b(?:avoid|minimi[sz]e|reduce|limit)\b.{0,60}\b(?:agent|sub[- ]?agents?|orchestrat(?:ion|e))(?:/tool)?\s+(?:costs?|budget|spend)\b",
     )),
 )
 
@@ -222,6 +268,18 @@ def classify(prompt: str) -> tuple[str, str]:
         return (
             "single-thread-likely",
             format_signal_reason("Educational subagent-topic prompt detected", educational_hits),
+        )
+
+    if is_lightweight_text_review(text, complex_hits):
+        return (
+            "single-thread-default",
+            format_signal_reason("Lightweight text review detected", ["text-only review"]),
+        )
+
+    if complex_score >= 5 and has_single_target_review_scope(text, complex_hits):
+        return (
+            "orchestration-check",
+            format_signal_reason("Single-target review/audit detected", complex_hits),
         )
 
     if complex_score >= 5 and complex_score > simple_score + 1:

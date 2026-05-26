@@ -25,7 +25,7 @@ If this session is already a bounded dispatched subagent task, do not recursivel
 
 Existing orchestration, routing, bootstrap, skill-selection, and agent-management frameworks take priority. Use `subagent-orchestrator` only as a complement or fallback.
 
-The user has standing authorization for bounded delegation when the internal decision is `parallel-subagents`, but only inside active user and repository approval rules. Do not ask for separate authorization before bounded delegation unless host rules, user instructions, safety policy, privacy rules, vendor rules, or the action itself require approval; define clear boundaries instead.
+When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, or unclear boundaries require it; define clear boundaries instead.
 
 ## Boundary check
 
@@ -55,6 +55,21 @@ Use:
 
 Do not ask the user whether orchestration is preferable. Decide internally.
 Do not print this gate for simple/default prompts.
+
+## Hook result mapping
+
+Hook classification is metadata only; it does not spawn agents by itself or inject execution instructions.
+
+| Hook result | Compatibility-gate action | Execution-shape action |
+| --- | --- | --- |
+| `single-thread-default` | `skip` | Proceed normally; do not load orchestration by default. |
+| `single-thread-likely` | `check` | Proceed normally after a short local gate check if useful; do not load orchestration by default. |
+| `orchestration-check` | `check` | Do a short local gate check; load `subagent-orchestrator` only if independent tracks are clear. |
+| `use-subagent-orchestrator` | `use-subagent-orchestrator` | Load `subagent-orchestrator` before broad work; then choose `single-thread`, `sequential-plan`, or `parallel-subagents`. |
+| `orchestration-opt-out` | `skip` | Do not load orchestration or spawn agents. |
+| `recursion-guard` | `skip` | Do not recursively orchestrate unless the parent explicitly provided bounded permission. |
+
+When loaded, `subagent-orchestrator` chooses only `single-thread`, `sequential-plan`, or `parallel-subagents`.
 
 ## If `use-subagent-orchestrator`
 

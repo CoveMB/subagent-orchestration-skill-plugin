@@ -14,6 +14,39 @@ SKILLS_ROOT = PLUGIN_ROOT / "skills"
 ORCHESTRATOR_SKILL = SKILLS_ROOT / "subagent-orchestrator" / "SKILL.md"
 USING_ORCHESTRATOR_SKILL = SKILLS_ROOT / "using-subagent-orchestrator" / "SKILL.md"
 EXPECTED_SKILL_NAMES = {"subagent-orchestrator", "using-subagent-orchestrator"}
+DECISION_MAPPING_REQUIRED_TERMS = [
+    "hook result",
+    "compatibility-gate action",
+    "execution-shape action",
+    "`single-thread-default`",
+    "`single-thread-likely`",
+    "`orchestration-check`",
+    "`use-subagent-orchestrator`",
+    "`orchestration-opt-out`",
+    "`recursion-guard`",
+    "`skip`",
+    "`check`",
+    "proceed normally; do not load orchestration by default",
+    "proceed normally after a short local gate check if useful",
+    "short local gate check",
+    "load `subagent-orchestrator` only if independent tracks are clear",
+    "load `subagent-orchestrator`",
+    "do not load orchestration or spawn agents",
+    "do not recursively orchestrate unless the parent explicitly provided bounded permission",
+    "does not spawn agents by itself or inject execution instructions",
+    "chooses only `single-thread`, `sequential-plan`, or `parallel-subagents`",
+]
+DECISION_MAPPING_TABLE_REQUIRED_TERMS = [
+    "hook result mapping",
+    "| hook result | compatibility-gate action | execution-shape action |",
+    "| --- | --- | --- |",
+    "| `single-thread-default` | `skip` |",
+    "| `single-thread-likely` | `check` |",
+    "| `orchestration-check` | `check` |",
+    "| `use-subagent-orchestrator` | `use-subagent-orchestrator` |",
+    "| `orchestration-opt-out` | `skip` |",
+    "| `recursion-guard` | `skip` |",
+]
 SKILL_FORWARD_SCENARIOS = [
     (
         "simple direct question",
@@ -149,6 +182,42 @@ def test_plugin_interface_respects_optional_helper_boundary() -> None:
     assert "before work begins" not in searchable_text
 
 
+def test_plugin_manifest_explains_bounded_write_capability() -> None:
+    manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
+    interface = manifest["interface"]
+    long_description = interface["longDescription"].lower()
+
+    assert interface["capabilities"] == ["Read", "Write"]
+    assert "read-only-first" in long_description
+    assert "write-capable roles are bounded" in long_description
+    assert "explicitly appropriate" in long_description
+    assert "metadata-only" in long_description
+    assert "not a global bootstrap" in long_description
+
+
+def test_user_facing_docs_explain_bounded_write_boundary() -> None:
+    combined_text = "\n".join([
+        (ROOT / "README.md").read_text(encoding="utf-8"),
+        (ROOT / "docs" / "skill-usage-examples.md").read_text(encoding="utf-8"),
+    ]).lower()
+
+    assert_text_contains_all(
+        combined_text,
+        [
+            "read-only-first",
+            "bounded workspace-write roles",
+            "`so_implementer`",
+            "`so_reproducer`",
+            "scratch/log work",
+            "explicit task scope or prior synthesis",
+            "destructive/external actions",
+            "host/user/approval rules",
+            "do not write, spawn, or activate a global bootstrap automatically",
+        ],
+        "README.md and docs/skill-usage-examples.md",
+    )
+
+
 def test_orchestrator_skill_has_execution_runbook() -> None:
     text = ORCHESTRATOR_SKILL.read_text(encoding="utf-8")
     assert_text_contains_all(
@@ -191,6 +260,18 @@ def test_skills_define_decision_taxonomy_and_avoidance_contracts() -> None:
         ],
         USING_ORCHESTRATOR_SKILL,
     )
+
+
+def test_hook_gate_execution_mapping_is_documented() -> None:
+    source_paths = [
+        USING_ORCHESTRATOR_SKILL,
+        ROOT / "README.md",
+        ROOT / "snippets" / "AGENTS.subagent-orchestration.md",
+    ]
+    for path in source_paths:
+        text = path.read_text(encoding="utf-8").lower()
+        assert_text_contains_all(text, DECISION_MAPPING_REQUIRED_TERMS, path)
+        assert_text_contains_all(text, DECISION_MAPPING_TABLE_REQUIRED_TERMS, path)
 
 
 def test_skills_define_priority_and_negative_contracts() -> None:
@@ -236,6 +317,35 @@ def test_skill_forward_scenarios_have_actionable_guidance() -> None:
         assert_text_contains_all(text, required_terms, f"{path} scenario={scenario_name}")
 
 
+def test_debugging_pattern_keeps_reproducer_out_of_read_only_phase() -> None:
+    text = ORCHESTRATOR_SKILL.read_text(encoding="utf-8").lower()
+    debugging_start = text.index("### debugging")
+    next_pattern_start = text.index("### pr/branch review")
+    debugging_text = text[debugging_start:next_pattern_start]
+
+    assert_text_contains_all(
+        debugging_text,
+        [
+            "phase 1 - read-only",
+            "`so_mapper`: map relevant code paths and likely failure location.",
+            "`so_tester`: identify targeted tests, reproduction commands, and missing coverage.",
+            "`so_reviewer`: inspect likely fix risks.",
+            "phase 2 - only if safe and useful",
+            "`so_reproducer`: reproduce the failure and collect logs after mapper/tester narrow scope.",
+            "use workspace-write only for temporary scratch artifacts",
+            "report artifacts created/removed",
+            "do not edit product code unless explicitly assigned",
+        ],
+        ORCHESTRATOR_SKILL,
+    )
+
+    phase_one_start = debugging_text.index("phase 1 - read-only")
+    phase_two_start = debugging_text.index("phase 2 - only if safe and useful")
+    phase_one_text = debugging_text[phase_one_start:phase_two_start]
+
+    assert "`so_reproducer`" not in phase_one_text
+
+
 def test_skill_boundary_contract_matches_readme_and_agents_snippet() -> None:
     source_paths = [
         ORCHESTRATOR_SKILL,
@@ -257,11 +367,36 @@ def test_skill_boundary_contract_matches_readme_and_agents_snippet() -> None:
         )
 
 
-def test_skills_treat_bounded_delegation_as_authorized() -> None:
+def test_skills_allow_bounded_read_only_delegation_without_overriding_constraints() -> None:
+    source_paths = [
+        ORCHESTRATOR_SKILL,
+        USING_ORCHESTRATOR_SKILL,
+        ROOT / "README.md",
+        ROOT / "snippets" / "AGENTS.subagent-orchestration.md",
+    ]
+    required_terms = [
+        "do not ask a separate question solely for bounded read-only delegation",
+        "still stop or ask",
+        "repository rules",
+        "user instructions",
+        "safety policy",
+        "privacy/context-sharing",
+        "vendor/tool policy",
+        "approval rules",
+        "cost/budget limits",
+        "destructive actions",
+        "external side effects",
+        "workspace-write",
+        "unclear boundaries",
+    ]
+
+    for path in source_paths:
+        text = path.read_text(encoding="utf-8").lower()
+        assert "standing authorization" not in text, path
+        assert_text_contains_all(text, required_terms, path)
+
     for path in [ORCHESTRATOR_SKILL, USING_ORCHESTRATOR_SKILL]:
         text = path.read_text(encoding="utf-8").lower()
-        assert "standing authorization" in text, path
-        assert "do not ask for separate authorization" in text, path
         assert "clear boundaries" in text, path
     orchestrator_text = ORCHESTRATOR_SKILL.read_text(encoding="utf-8").lower()
     assert "ask before code changes unless" not in orchestrator_text

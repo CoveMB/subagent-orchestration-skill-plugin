@@ -6,6 +6,21 @@ Host repository rules win. This plugin is an execution-shape helper only; it doe
 
 For simple/default prompts, stay silent and proceed single-threaded.
 
+Hook result mapping:
+
+Hook classification is metadata only; it does not spawn agents by itself or inject execution instructions.
+
+| Hook result | Compatibility-gate action | Execution-shape action |
+| --- | --- | --- |
+| `single-thread-default` | `skip` | Proceed normally; do not load orchestration by default. |
+| `single-thread-likely` | `check` | Proceed normally after a short local gate check if useful; do not load orchestration by default. |
+| `orchestration-check` | `check` | Do a short local gate check; load `subagent-orchestrator` only if independent tracks are clear. |
+| `use-subagent-orchestrator` | `use-subagent-orchestrator` | Load `subagent-orchestrator` before broad work; then choose `single-thread`, `sequential-plan`, or `parallel-subagents`. |
+| `orchestration-opt-out` | `skip` | Do not load orchestration or spawn agents. |
+| `recursion-guard` | `skip` | Do not recursively orchestrate unless the parent explicitly provided bounded permission. |
+
+When loaded, `subagent-orchestrator` chooses only `single-thread`, `sequential-plan`, or `parallel-subagents`.
+
 Use subagent-orchestrator only for explicit subagent/orchestration requests or clearly complex work where existing frameworks do not already cover the decision. Classify internally as one of:
 
 1. `single-thread`,
@@ -14,7 +29,7 @@ Use subagent-orchestrator only for explicit subagent/orchestration requests or c
 
 For complex debugging, PR review, refactors, architecture exploration, test failures, migrations, performance work, security-sensitive work, unfamiliar APIs, or multi-file changes, the `subagent-orchestrator` skill may be used as a complement or fallback.
 
-The user has standing authorization for bounded delegation when the internal decision is `parallel-subagents`, but only inside active user and repository approval rules. Subagents are read-only by default. Do not ask for separate authorization before bounded read-only delegation unless host rules, user instructions, safety policy, privacy rules, vendor rules, or the action itself require approval; define clear boundaries first.
+When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, or unclear boundaries require it. Subagents are read-only by default; define clear boundaries first.
 
 If a parallel workflow is valuable:
 

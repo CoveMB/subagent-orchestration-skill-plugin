@@ -50,7 +50,7 @@ Subagents may not:
 
 ## Authorization and boundaries
 
-The user has standing authorization for bounded delegation when the internal decision is `parallel-subagents`, but only inside active user and repository approval rules. Do not ask for separate authorization before spawning bounded subagents unless host rules, user instructions, safety policy, privacy rules, vendor rules, or the action itself require approval.
+When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, or unclear boundaries require it.
 
 Clear boundaries are required first: role, mode, scope, expected output, and no recursive fan-out. Ask the user only when boundaries cannot be defined, the user opted out, or the action itself needs approval such as destructive or externally visible work.
 
@@ -160,7 +160,7 @@ For workspace-write tasks, add:
 - `so_mapper`: Map execution paths, affected files, call sites, dependencies, and likely change boundaries. Return evidence with file paths and uncertainty.
 - `so_reviewer`: Review correctness, security, regressions, hidden coupling, and missing tests. Return only real findings with severity and recommended next action.
 - `so_tester`: Identify targeted tests, expected failures, verification commands, and remaining coverage gaps. Run commands only when safe for a read-only workspace.
-- `so_reproducer`: Reproduce failures, collect logs, and manage temporary scratch artifacts after read-only test planning narrows the scope.
+- `so_reproducer`: Phase-2 workspace-write agent for reproducing failures, collecting logs, and managing temporary scratch artifacts after read-only mapper/tester planning narrows scope. Do not edit product code unless explicitly assigned.
 - `so_docs_researcher`: Verify external API, framework, or version-specific behavior from authoritative sources. Separate documented facts from inference.
 - `so_designer`: Compare implementation options, tradeoffs, migration risks, and testability. Recommend the smallest reversible plan.
 - `so_implementer`: Apply one bounded patch after mapping/review narrows the change. Use only with explicit write scope and verification requirements.
@@ -173,12 +173,17 @@ If a named custom agent cannot be spawned, use the closest available read-only a
 
 ### Debugging
 
-Prefer read-only agents first:
+Default to read-only scope narrowing first. Do not spawn workspace-write reproducers before mapper/tester scope is narrowed.
 
-- `explorer` or `so_mapper`: map relevant code paths and likely failure location.
-- `so_reproducer`: reproduce the failure and collect logs, if safe.
-- `so_tester`: identify targeted tests and missing test coverage.
+Phase 1 - read-only:
+
+- `so_mapper`: map relevant code paths and likely failure location.
+- `so_tester`: identify targeted tests, reproduction commands, and missing coverage.
 - `so_reviewer`: inspect likely fix risks.
+
+Phase 2 - only if safe and useful:
+
+- `so_reproducer`: reproduce the failure and collect logs after mapper/tester narrow scope. Use workspace-write only for temporary scratch artifacts, report artifacts created/removed, and do not edit product code unless explicitly assigned.
 
 Synthesis must include:
 
