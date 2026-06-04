@@ -298,7 +298,7 @@ bash scripts/check.sh
 
 Expected:
 
-- debugging prompt => `use-subagent-orchestrator`,
+- broad debugging prompt => `use-subagent-orchestrator`,
 - rename prompt => `single-thread-likely` with only result/reason metadata,
 - user opt-out => `orchestration-opt-out`,
 - child-agent prompt => `recursion-guard`.

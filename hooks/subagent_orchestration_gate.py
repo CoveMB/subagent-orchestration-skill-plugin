@@ -65,7 +65,21 @@ VALIDATION_VERB_PATTERN = r"\b(?:validat(?:e|ion)|ensure|verify|check|confirm|ma
 SOURCE_FILE_PATTERN = (
     r"\b[\w./-]+\.(?:ts|tsx|js|jsx|py|go|rs|java|rb|php|cs|cpp|c|h|md|json|ya?ml|toml)\b"
 )
-SINGLE_TARGET_SCOPE_PATTERN = r"\b(?:one|single)[- ]?(?:file|module|component|function)\b"
+SINGLE_TARGET_SCOPE_PATTERN = (
+    r"\b(?:this\s+)?(?:one|single)[- ]?(?:failing\s+)?"
+    r"(?:file|module|component|function|test|case|assertion|stack trace)\b"
+)
+BROAD_DEBUG_SCOPE_PATTERN = (
+    r"\bunknown\s+(?:subsystem|system|module|service)\s+boundaries\b|"
+    r"\b(?:multiple|many|several)\s+(?:files|modules|services|layers|subsystems)\b"
+)
+DEBUG_SCOPE_BLOCKING_HITS = {
+    "architecture/refactor",
+    "comparison/options",
+    "explicit subagents",
+    "multi-surface scope",
+    "research/docs",
+}
 LIGHTWEIGHT_TEXT_REVIEW_SUBJECT_PATTERN = (
     r"\b(?:readme|paragraph|copy|wording|clarity|grammar|typos?|sentence)\b"
 )
@@ -113,6 +127,20 @@ def has_only_topic_complex_hits(hits: Iterable[str]) -> bool:
     return not unique_hits or unique_hits <= {"explicit subagents"}
 
 
+def extract_source_files(text: str) -> set[str]:
+    return set(re.findall(SOURCE_FILE_PATTERN, text, flags=re.IGNORECASE))
+
+
+def has_single_named_target(text: str) -> bool:
+    source_files = extract_source_files(text)
+    if len(source_files) == 1:
+        return True
+    if len(source_files) > 1:
+        return False
+
+    return bool(re.search(SINGLE_TARGET_SCOPE_PATTERN, text, flags=re.IGNORECASE))
+
+
 def has_single_target_review_scope(text: str, hits: Iterable[str]) -> bool:
     unique_hits = set(hits)
     if "review/audit" not in unique_hits:
@@ -120,13 +148,19 @@ def has_single_target_review_scope(text: str, hits: Iterable[str]) -> bool:
     if unique_hits & {"architecture/refactor", "explicit subagents", "multi-surface scope"}:
         return False
 
-    source_files = set(re.findall(SOURCE_FILE_PATTERN, text, flags=re.IGNORECASE))
-    if len(source_files) == 1:
-        return True
-    if len(source_files) > 1:
+    return has_single_named_target(text)
+
+
+def has_single_target_debug_scope(text: str, hits: Iterable[str]) -> bool:
+    unique_hits = set(hits)
+    if "debugging/root-cause" not in unique_hits:
+        return False
+    if unique_hits & DEBUG_SCOPE_BLOCKING_HITS:
+        return False
+    if re.search(BROAD_DEBUG_SCOPE_PATTERN, text, flags=re.IGNORECASE):
         return False
 
-    return bool(re.search(SINGLE_TARGET_SCOPE_PATTERN, text, flags=re.IGNORECASE))
+    return has_single_named_target(text)
 
 
 def is_lightweight_text_review(text: str, hits: Iterable[str]) -> bool:
@@ -305,6 +339,12 @@ def classify(prompt: str) -> tuple[str, str]:
         return (
             "orchestration-check",
             format_signal_reason("Single-target review/audit detected", complex_hits),
+        )
+
+    if complex_score >= 5 and has_single_target_debug_scope(text, complex_hits):
+        return (
+            "orchestration-check",
+            format_signal_reason("Single-target debugging/root-cause detected", complex_hits),
         )
 
     if complex_score >= 5 and complex_score > simple_score + 1:

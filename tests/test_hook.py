@@ -1082,6 +1082,28 @@ def test_classifier_reports_reason_labels_for_representative_complex_prompt() ->
     )
 
 
+def test_classifier_downgrades_single_target_debugging() -> None:
+    assert_prompt_decisions([
+        ("Fix the failing test in tests/test_auth.py only.", "orchestration-check"),
+        ("Debug this one failing assertion in src/auth.ts and propose tests.", "orchestration-check"),
+        ("Find the root cause of this one stack trace.", "orchestration-check"),
+    ])
+
+
+def test_classifier_preserves_broad_debugging_orchestration() -> None:
+    assert_prompt_decisions([
+        ("Investigate flaky CI failures across API, worker, and database layers.", "use-subagent-orchestrator"),
+        (
+            "Find the root cause of a production regression spanning frontend, backend, and cache.",
+            "use-subagent-orchestrator",
+        ),
+        (
+            "Debug a performance regression involving architecture changes and benchmark results.",
+            "use-subagent-orchestrator",
+        ),
+    ])
+
+
 def test_classifier_decision_matrix_covers_execution_shapes() -> None:
     assert_prompt_decisions(DECISION_MATRIX_CASES)
 
