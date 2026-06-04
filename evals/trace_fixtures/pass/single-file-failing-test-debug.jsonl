@@ -1,1 +1,1 @@
-{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"Subagent orchestration gate\nResult: orchestration-check\nReason: Single-target debugging/root-cause detected (debugging/root-cause, tests/verification)."}]}}
+{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"Subagent orchestration gate\nResult: single-thread-likely\nReason: Single-target debugging/root-cause detected (debugging/root-cause, tests/verification)."}]}}

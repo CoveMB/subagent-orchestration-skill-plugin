@@ -81,7 +81,7 @@ FALSE_POSITIVE_CASES = [
     ("Review the README wording for clarity.", "single-thread-default"),
     ("Review auth and billing docs for clarity only.", "single-thread-default"),
     ("Compare package and workspace names in package.json.", "single-thread-default"),
-    ("Debug this one failing cache and storage test.", "orchestration-check"),
+    ("Debug this one failing cache and storage test.", "single-thread-likely"),
     ("Debug auth and search for root cause.", "orchestration-check"),
 ]
 HIGH_VALUE_EDGE_CASES = [
@@ -1118,9 +1118,9 @@ def test_classifier_reports_reason_labels_for_representative_complex_prompt() ->
 
 def test_classifier_downgrades_single_target_debugging() -> None:
     assert_prompt_decisions([
-        ("Fix the failing test in tests/test_auth.py only.", "orchestration-check"),
-        ("Debug this one failing assertion in src/auth.ts and propose tests.", "orchestration-check"),
-        ("Find the root cause of this one stack trace.", "orchestration-check"),
+        ("Fix the failing test in tests/test_auth.py only.", "single-thread-likely"),
+        ("Debug this one failing assertion in src/auth.ts and propose tests.", "single-thread-likely"),
+        ("Find the root cause of this one stack trace.", "single-thread-likely"),
     ])
 
 

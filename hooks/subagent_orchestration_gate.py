@@ -411,9 +411,9 @@ def classify(prompt: str) -> tuple[str, str]:
             format_signal_reason("Single-target review/audit detected", complex_hits),
         )
 
-    if complex_score >= 5 and has_single_target_debug_scope(text, complex_hits):
+    if complex_score >= 3 and has_single_target_debug_scope(text, complex_hits):
         return (
-            "orchestration-check",
+            "single-thread-likely",
             format_signal_reason("Single-target debugging/root-cause detected", complex_hits),
         )
 
