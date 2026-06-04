@@ -1,0 +1,1 @@
+{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"Subagent orchestration gate\nResult: recursion-guard\nReason: Bounded child-agent task detected."}]}}

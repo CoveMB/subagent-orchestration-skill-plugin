@@ -37,6 +37,7 @@ CUSTOM_AGENT_NAMES = (
     "so_implementer",
 )
 CUSTOM_AGENT_PATTERN = "(?:" + "|".join(re.escape(name) for name in CUSTOM_AGENT_NAMES) + ")"
+CUSTOM_AGENT_HEADER_PATTERN = rf"(?m)^\s*agent_type:\s*{CUSTOM_AGENT_PATTERN}\b"
 SURFACE_TERM_PATTERN = r"(?:frontend|backend|api|web|server|client|database|db|service)s?"
 FORMAL_REVIEW_TARGET_PATTERN = (
     r"(?:branch|pr|pull request|mr|merge request|diff|patch|code|changes?|commits?|"
@@ -130,6 +131,10 @@ def is_lightweight_text_review(text: str, hits: Iterable[str]) -> bool:
     )
 
 
+def has_canonical_child_agent_header(text: str) -> bool:
+    return bool(re.search(CUSTOM_AGENT_HEADER_PATTERN, text, flags=re.IGNORECASE))
+
+
 OPTOUT_SIGNALS = (
     SignalSet("explicit user opt-out", 99, (
         r"\bdo not use sub[- ]?agents?\b",
@@ -165,6 +170,7 @@ OPTOUT_SIGNALS = (
 
 RECURSION_GUARD_SIGNALS = (
     SignalSet("child-agent recursion guard", 99, (
+        CUSTOM_AGENT_HEADER_PATTERN,
         r"\bdispatched as (?:a )?sub[- ]?agent\b",
         r"\byou are a sub[- ]?agent\b",
         rf"\byou are {CUSTOM_AGENT_PATTERN}\b",
@@ -239,15 +245,21 @@ SIMPLE_SIGNALS = (
 def classify(prompt: str) -> tuple[str, str]:
     text = prompt.strip()
 
-    optout_score, optout_hits = count_signals(text, OPTOUT_SIGNALS)
     conditional_score, conditional_hits = count_signals(text, CONDITIONAL_ORCHESTRATION_SIGNALS)
+    recursion_score, recursion_hits = count_signals(text, RECURSION_GUARD_SIGNALS)
+    if recursion_score and has_canonical_child_agent_header(text):
+        return (
+            "recursion-guard",
+            format_signal_reason("Bounded child-agent task detected", recursion_hits),
+        )
+
+    optout_score, optout_hits = count_signals(text, OPTOUT_SIGNALS)
     if optout_score and not conditional_score:
         return (
             "orchestration-opt-out",
             format_signal_reason("Explicit orchestration opt-out detected", optout_hits),
         )
 
-    recursion_score, recursion_hits = count_signals(text, RECURSION_GUARD_SIGNALS)
     if recursion_score:
         return (
             "recursion-guard",

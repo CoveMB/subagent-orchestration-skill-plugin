@@ -1107,6 +1107,27 @@ def test_classifier_recursion_guard_variants() -> None:
         ("You are so_mapper. Map the repository and return files.", "recursion-guard"),
         ("Task for so_tester: find relevant tests.", "recursion-guard"),
         ("Parent agent asked you to audit this patch.", "recursion-guard"),
+        (
+            "\n".join([
+                "agent_type: so_mapper",
+                "mode: read-only",
+                "scope: map auth flow",
+                "task: return files and uncertainty",
+                "constraints: no recursive fan-out",
+            ]),
+            "recursion-guard",
+        ),
+        (
+            "\n".join([
+                "agent_type: so_reviewer",
+                "mode: read-only",
+                "scope: review hook classifier flow",
+                "task: return material findings only",
+                "constraints: do not edit files; do not spawn more agents; report uncertainty",
+            ]),
+            "recursion-guard",
+        ),
+        ("agent_type: so_tester\nmode: read-only\nscope: identify tests", "recursion-guard"),
     ])
 
 
