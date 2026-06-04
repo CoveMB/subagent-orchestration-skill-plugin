@@ -11,7 +11,7 @@
   "interface": {
     "displayName": "Subagent Orchestrator",
     "shortDescription": "Optional helper for deciding when subagent orchestration adds value.",
-    "longDescription": "A lightweight execution-shape helper for Codex. It keeps existing workflow systems and repository instructions ahead of orchestration, while avoiding subagents for simple tasks. Read-only-first; write-capable roles are bounded and only used when explicitly appropriate. Hook output is metadata-only, and this is not a global bootstrap.",
+    "longDescription": "A lightweight execution-shape helper for Codex. It keeps existing workflow systems and repository instructions ahead of orchestration, while avoiding subagents for simple tasks. Read-only-first; write-capable roles are bounded and only used when explicitly appropriate. Hook output is metadata plus non-binding hints, and this is not a global bootstrap.",
     "developerName": "CoveMB",
     "category": "Coding",
     "capabilities": ["Read", "Write"],

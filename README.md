@@ -2,10 +2,10 @@
 
 This skill plugin gives Codex a quiet, compatibility-oriented orchestration gate:
 
-- every prompt is classified internally and receives compact result/reason metadata,
+- every prompt is classified internally and receives compact result/reason metadata, with advisory action hints for strong/check decisions,
 - existing orchestration, routing, bootstrap, skill-selection, and agent-management frameworks take priority,
 - simple prompts stay single-threaded unless the user asks otherwise,
-- complex prompts still receive only result/reason metadata by default,
+- complex prompts may receive non-binding hints, but the hook still never spawns or authorizes work,
 - default/simple prompts do not write, spawn, or activate a global bootstrap automatically,
 - when `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation,
 - before spawning parallel subagents, briefly state why parallel work is useful, name at least two independent tracks with clear outputs, and check blockers,
@@ -58,7 +58,7 @@ For Codex, the quiet behavior comes from three layers together:
 2. **Orchestration skill**: `subagent-orchestrator` chooses `single-thread`, `sequential-plan`, or `parallel-subagents`.
 3. **UserPromptSubmit hook**: reports a result and reason through valid `additionalContext`.
 
-The hook does not spawn agents by itself or inject execution instructions. After the orchestration skill selects `parallel-subagents`, the assistant must call `spawn_agent` or the available subagent-spawning tool in that same turn after giving a compact why-parallel proof, checking blockers, and defining bounded roles. It should only fall back to sequential work when no spawning tool is available, the proof fails, or higher-priority rules block spawning.
+The hook does not spawn agents by itself or inject binding execution instructions. It may append non-binding action hints for `use-subagent-orchestrator` and `orchestration-check` results. After the orchestration skill selects `parallel-subagents`, the assistant must call `spawn_agent` or the available subagent-spawning tool in that same turn after giving a compact why-parallel proof, checking blockers, and defining bounded roles. It should only fall back to sequential work when no spawning tool is available, the proof fails, or higher-priority rules block spawning.
 
 Hook result mapping:
 
@@ -73,7 +73,7 @@ Hook result mapping:
 
 When loaded, `subagent-orchestrator` chooses only `single-thread`, `sequential-plan`, or `parallel-subagents`.
 
-The live harness has an opt-in contract mode for measuring that behavior end to end. Use `--hook-mode contract` to append a bounded spawn contract only for strong `use-subagent-orchestrator` decisions. Normal hook output remains metadata-only.
+The live harness has an opt-in contract mode for measuring that behavior end to end. Use `--hook-mode contract` to append a bounded spawn contract only for strong `use-subagent-orchestrator` decisions. Normal hook output remains metadata plus optional non-binding hints, not a spawn contract.
 
 A plugin can package the skills. The installer supports user/global skill installation and project-scoped activation, but activation is always explicit.
 
@@ -83,7 +83,7 @@ A plugin can package the skills. The installer supports user/global skill instal
 - **Write-capability boundary**: the plugin is read-only-first. The manifest keeps `Write` only for bounded workspace-write roles such as `so_implementer` or `so_reproducer` scratch/log work. Code edits require explicit task scope or prior synthesis, and destructive/external actions remain governed by host/user/approval rules.
 - **Host-repo boundary**: domain-specific user instructions, repository `AGENTS.md`, local scripts, audit requirements, and source-of-truth rules win over plugin guidance. When host repository rules are stricter, host repository rules win.
 - **Subagent-output boundary**: subagent output is work product, not evidence by itself. Required tests, citations, source checks, approvals, and audit notes still need to be performed directly.
-- **Hook boundary**: the hook reports classification metadata only. The live harness can add spawn-contract guidance for eval runs, but the hook still does not enforce truth, validate sources, authorize edits, satisfy citations, replace tests, or bypass safety/privacy/vendor/approval rules.
+- **Hook boundary**: the hook reports classification metadata plus optional non-binding action hints. The live harness can add spawn-contract guidance for eval runs, but the hook still does not enforce truth, validate sources, authorize edits, satisfy citations, replace tests, or bypass safety/privacy/vendor/approval rules.
 - **Installer boundary**: user scope never writes `CODEX_HOME/config.toml` or `CODEX_HOME/AGENTS.md`. Project scope writes only under the selected repository root and never patches `~/.codex` or `~/.agents`.
 
 ## Four install modes
@@ -300,7 +300,7 @@ bash scripts/check.sh
 Expected:
 
 - broad debugging prompt => `use-subagent-orchestrator`,
-- rename prompt => `single-thread-likely` with only result/reason metadata,
+- rename prompt => `single-thread-likely` with result/reason metadata only,
 - user opt-out => `orchestration-opt-out`,
 - child-agent prompt => `recursion-guard`.
 
@@ -375,7 +375,7 @@ python3 scripts/run_live_skill_evals.py \
   --case parallel-auth-debug
 ```
 
-Contract mode is owned by the live harness, not the production hook. The harness appends spawn-contract guidance to its synthetic hook context only for strong `use-subagent-orchestrator` classifications; simple, opt-out, and recursion-guard prompts stay metadata-only. `--inject-local-hook-context` also prepends that harness context to the child prompt, which is useful when the CLI runtime does not expose successful hook `additionalContext` to the model during eval runs.
+Contract mode is owned by the live harness, not the production hook. The harness appends spawn-contract guidance to its synthetic hook context only for strong `use-subagent-orchestrator` classifications; simple, opt-out, and recursion-guard prompts stay result/reason metadata only. `--inject-local-hook-context` also prepends that harness context to the child prompt, which is useful when the CLI runtime does not expose successful hook `additionalContext` to the model during eval runs.
 
 Contract-mode live runs also append a bounded live-eval execution limit to the child prompt. This keeps broad prompts such as branch reviews focused on producing orchestration trace evidence instead of running full audits, external review services, network calls, package installs, full test suites, or broad repository sweeps. Spawned runs are instructed to use one post-spawn wait and then synthesize from available agent results, noting unavailable agents as blockers instead of repeatedly waiting or falling back to a sequential review.
 
@@ -383,7 +383,7 @@ For prompt rows where `must_not_spawn` is true, contract-mode live runs add a st
 
 In contract mode, strong orchestration cases are expected to emit a pre-spawn assistant boundary that includes `Subagent orchestration gate`, `Result: use-subagent-orchestrator`, `Reason:`, a compact `Why parallel:` proof naming at least two independent tracks, `Blockers checked:`, and the bounded `Subagents:` plan before any spawn call. Spawn prompts should start with the exact `agent_type: so_*` line, leave `fork_context` unset when using custom agent types, and carry any needed context in the prompt body.
 
-For spawn-contract evals, keep the subagent-capable user/profile configuration enabled. `--codex-arg=--ignore-user-config` is useful for metadata-only smoke tests, but it can remove the live spawn surface and turn strong orchestration cases into expected failures.
+For spawn-contract evals, keep the subagent-capable user/profile configuration enabled. `--codex-arg=--ignore-user-config` is useful for classifier smoke tests, but it can remove the live spawn surface and turn strong orchestration cases into expected failures.
 
 Use `--no-local-hook-context` when you specifically want to test runtime hook integration without the harness writing that synthetic event to the trace. Prompt rows with `host_rules_fixture` run in an isolated per-case workspace containing an `AGENTS.md` fixture.
 
@@ -401,7 +401,7 @@ python3 scripts/run_live_skill_evals.py \
 - Keep `max_depth = 1` if you manually merge `snippets/config.subagents.toml`.
 - Prefer read-only subagents first.
 - Do not let multiple agents edit the same files unless they are in isolated worktrees.
-- Treat the hook as classification metadata, not an enforcement boundary; keep contract mode limited to eval or deliberate validation runs.
+- Treat the hook as classification metadata plus optional non-binding hints, not an enforcement boundary; keep contract mode limited to eval or deliberate validation runs.
 - Respect user opt-outs.
 - Repository-specific `AGENTS.md` files and source-of-truth project rules remain higher authority than this global guidance.
 - Do not make this kit compete with Superpowers, Recursive Mode, or other orchestration/routing/bootstrap systems.

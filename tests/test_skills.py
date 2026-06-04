@@ -33,7 +33,7 @@ DECISION_MAPPING_REQUIRED_TERMS = [
     "load `subagent-orchestrator`",
     "do not load orchestration or spawn agents",
     "do not recursively orchestrate unless the parent explicitly provided bounded permission",
-    "does not spawn agents by itself or inject execution instructions",
+    "does not spawn agents by itself or inject binding execution instructions",
     "chooses only `single-thread`, `sequential-plan`, or `parallel-subagents`",
 ]
 DECISION_MAPPING_TABLE_REQUIRED_TERMS = [
@@ -191,7 +191,7 @@ def test_plugin_manifest_explains_bounded_write_capability() -> None:
     assert "read-only-first" in long_description
     assert "write-capable roles are bounded" in long_description
     assert "explicitly appropriate" in long_description
-    assert "metadata-only" in long_description
+    assert "metadata plus non-binding hints" in long_description
     assert "not a global bootstrap" in long_description
 
 
@@ -227,6 +227,51 @@ def test_orchestrator_skill_has_execution_runbook() -> None:
             "### Spawn Template",
             "### Agent Task Templates",
             "### Fallback When Custom Agents Are Unavailable",
+        ],
+        ORCHESTRATOR_SKILL,
+    )
+
+
+def test_orchestrator_skill_defines_subagent_prompt_compiler() -> None:
+    text = ORCHESTRATOR_SKILL.read_text(encoding="utf-8").lower()
+    assert_text_contains_all(
+        text,
+        [
+            "## subagent prompt compiler",
+            "extract task type",
+            "extract scope",
+            "changed files from diff/status if available",
+            "unknown scope if no reliable boundary is known",
+            "identify independent tracks",
+            "code-path mapping",
+            "risk/security/correctness review",
+            "test discovery/verification",
+            "docs/api/version verification",
+            "design alternatives",
+            "select the smallest read-only roster",
+            "spawn read-only agents first",
+            "emit bounded prompts",
+            "spawn",
+            "wait",
+            "wait and synthesize",
+            "workspace-write is justified",
+            "scope primer before spawning",
+            "minimal local read-only pass",
+            "at least two independent tracks",
+            "initial roster",
+            "review/audit",
+            "debugging/root-cause",
+            "refactor/migration",
+            "docs/api/version-dependent task",
+            "comparison/options",
+            "implementation after investigation",
+            "context:",
+            "non-goals:",
+            "structured expected output",
+            "confidence:",
+            "evidence versus inference",
+            "no recursive fan-out",
+            "no edits unless workspace-write scope is explicit",
         ],
         ORCHESTRATOR_SKILL,
     )

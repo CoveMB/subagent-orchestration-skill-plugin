@@ -5,7 +5,7 @@ UserPromptSubmit hook for Codex.
 Quiet compatibility behavior:
 - Every submitted prompt is classified before output is chosen.
 - Every successful classification returns a result and reason in additionalContext.
-- All prompts emit only classification metadata, without orchestration guidance.
+- Strong/check classifications may append non-binding action hints.
 - The hook does not spawn subagents by itself.
 
 Codex hook docs: UserPromptSubmit receives JSON on stdin with a `prompt` field and
@@ -341,6 +341,17 @@ SIMPLE_SIGNALS = (
     SignalSet("tiny edit", 3, (r"typo", r"one[- ]?line", r"tiny", r"small", r"quick", r"rename")),
     SignalSet("direct ask", 1, (r"^\s*(give me|write|draft|compose)\b",)),
 )
+ACTION_HINTS = {
+    "use-subagent-orchestrator": (
+        "Non-binding hint: invoke the subagent-orchestrator skill, compile bounded read-only "
+        "subagent prompts, spawn only after a compact why-parallel proof passes, wait, then "
+        "synthesize before edits."
+    ),
+    "orchestration-check": (
+        "Non-binding hint: run the orchestration checklist; spawn only if at least two independent "
+        "tracks exist and blockers are clear."
+    ),
+}
 
 def classify(prompt: str) -> tuple[str, str]:
     text = prompt.strip()
@@ -425,11 +436,14 @@ def classify(prompt: str) -> tuple[str, str]:
 
 
 def format_result_context(decision: str, reason: str) -> str:
-    return "\n".join([
+    lines = [
         "Subagent orchestration gate",
         f"Result: {decision}",
         f"Reason: {reason}",
-    ])
+    ]
+    if action_hint := ACTION_HINTS.get(decision):
+        lines.append(f"Action: {action_hint}")
+    return "\n".join(lines)
 
 
 def print_parse_error(message: str) -> None:

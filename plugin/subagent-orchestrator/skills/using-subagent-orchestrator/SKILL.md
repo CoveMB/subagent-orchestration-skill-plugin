@@ -58,7 +58,7 @@ Do not print this gate for simple/default prompts.
 
 ## Hook result mapping
 
-Hook classification is metadata only; it does not spawn agents by itself or inject execution instructions.
+Hook classification is metadata plus optional non-binding action hints; it does not spawn agents by itself or inject binding execution instructions.
 
 | Hook result | Compatibility-gate action | Execution-shape action |
 | --- | --- | --- |

@@ -157,9 +157,12 @@ def assert_context_uses_professional_status_format(context: str) -> None:
     assert lines[0] == "Subagent orchestration gate", context
     assert lines[1].startswith("Result: "), context
     assert lines[2].startswith("Reason: "), context
-    assert len(lines) == 3, context
+    assert len(lines) in {3, 4}, context
     assert lines[2].endswith("."), context
     assert ":" not in lines[2].removeprefix("Reason: "), context
+    if len(lines) == 4:
+        assert lines[3].startswith("Action: Non-binding hint: "), context
+        assert lines[3].endswith("."), context
     assert "Subagent orchestration gate result:" not in context, context
     assert "Subagent orchestration gate quiet hint" not in context, context
     assert "Preliminary classification:" not in context, context
@@ -185,6 +188,21 @@ def assert_fail_open_output(output: dict[str, object]) -> None:
     assert "systemMessage" in output, output
     assert "hookSpecificOutput" not in output, output
     assert "could not parse input" in str(output["systemMessage"]), output
+
+
+def assert_context_includes_action_hint(prompt: str, expected_result: str, terms: list[str]) -> None:
+    context = assert_context_reports_result_and_reason(prompt, expected_result)
+    lower_context = context.lower()
+    assert "\naction: non-binding hint: " in lower_context, (prompt, context)
+    for term in terms:
+        assert term in lower_context, (prompt, term, context)
+    assert_context_uses_professional_status_format(context)
+
+
+def assert_context_has_no_action_hint(prompt: str, expected_result: str) -> None:
+    context = assert_context_reports_result_and_reason(prompt, expected_result)
+    assert "\nAction: " not in context, (prompt, context)
+    assert_context_uses_professional_status_format(context)
 
 
 def run_installer(
@@ -1124,6 +1142,42 @@ def test_classifier_decision_matrix_covers_execution_shapes() -> None:
     assert_prompt_decisions(DECISION_MATRIX_CASES)
 
 
+def test_hook_emits_non_binding_action_hint_for_strong_orchestration() -> None:
+    assert_context_includes_action_hint(
+        "Review this plugin and suggest meaningful improvements to orchestration triggers.",
+        "use-subagent-orchestrator",
+        [
+            "invoke the subagent-orchestrator skill",
+            "compile bounded read-only subagent prompts",
+            "spawn only after a compact why-parallel proof passes",
+            "wait, then synthesize before edits",
+        ],
+    )
+
+
+def test_hook_emits_checklist_hint_for_conditional_orchestration() -> None:
+    assert_context_includes_action_hint(
+        "Use subagents if helpful; otherwise work linearly.",
+        "orchestration-check",
+        [
+            "run the orchestration checklist",
+            "spawn only if at least two independent tracks exist",
+            "blockers are clear",
+        ],
+    )
+
+
+def test_hook_keeps_opt_out_and_recursion_guard_non_spawning() -> None:
+    assert_context_has_no_action_hint(
+        "Do not use subagents. Review this patch for security risk.",
+        "orchestration-opt-out",
+    )
+    assert_context_has_no_action_hint(
+        "agent_type: so_tester\nmode: read-only\nscope: identify tests",
+        "recursion-guard",
+    )
+
+
 def test_classifier_precedence_keeps_specific_decisions_stable() -> None:
     assert_prompt_decisions(PRECEDENCE_CASES)
 
@@ -1207,6 +1261,7 @@ def test_classifier_returns_only_result_for_default_and_simple_prompts() -> None
     ]
     for prompt, expected_result in cases:
         context = assert_context_reports_result_and_reason(prompt, expected_result)
+        assert "\nAction: " not in context, (prompt, context)
         assert BOUNDARY_SENTENCE not in context, (prompt, context)
         assert "Compatibility rules" not in context, (prompt, context)
         assert "Subagent orchestration gate quiet hint" not in context, (prompt, context)
@@ -1220,6 +1275,7 @@ def test_hook_ignores_live_eval_contract_mode_environment() -> None:
         "Subagent orchestration gate",
         "Result: use-subagent-orchestrator",
         "Reason: Strong orchestration signals detected (architecture/refactor, debugging/root-cause, tests/verification).",
+        "Action: Non-binding hint: invoke the subagent-orchestrator skill, compile bounded read-only subagent prompts, spawn only after a compact why-parallel proof passes, wait, then synthesize before edits.",
     ]
     assert "Contract mode: live-eval spawn contract." not in context
 

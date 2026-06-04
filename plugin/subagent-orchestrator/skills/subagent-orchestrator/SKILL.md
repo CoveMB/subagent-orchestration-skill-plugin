@@ -74,6 +74,50 @@ Decide internally whether the task fits exactly one of:
 
 Complexity alone is not enough. Select `parallel-subagents` only when real parallelizable tracks exist; otherwise use `sequential-plan` or `single-thread`.
 
+## Subagent Prompt Compiler
+
+Use this compiler when the hook result is `use-subagent-orchestrator`, when the local check promotes a task to `parallel-subagents`, or when the user explicitly requests bounded orchestration and no higher-priority rule blocks it. When `parallel-subagents` is selected, compile the user task into the smallest useful read-only agent set before spawning. Do not merely say that subagents would be useful: produce concrete bounded prompts and call `spawn_agent` or the available subagent-spawning tool. The compiler does not override the quiet first decision.
+
+### Scope primer before spawning
+
+A minimal local read-only pass is allowed before spawning. Use it only to identify the active repository rules, current branch/status when relevant, obvious files or docs to inspect, existing agent templates, and the smallest safe scope for each agent. Do not use the primer as a broad investigation substitute. If the primer shows only one useful track, a strict sequence, unclear boundaries, an opt-out, child-agent recursion, unsafe context sharing, or write conflicts, choose `sequential-plan` or `single-thread`.
+
+### Compilation order
+
+1. Extract task type: review/audit, debugging/root-cause, refactor/migration, docs/API/version-dependent task or version verification, comparison/options or comparison/design, or implementation after investigation.
+2. Extract scope: files explicitly named by the user, changed files from diff/status if available, subsystems named by the user, repository/branch/diff boundaries, unknown scope if no reliable boundary is known, non-goals, host rules, privacy/tool limits, and explicit read/write boundaries.
+3. Identify independent tracks: require at least two independent tracks that can return useful evidence without waiting on each other, such as code-path mapping, risk/security/correctness review, test discovery/verification, reproduction/log collection, docs/API/version verification, or design alternatives.
+4. Select the smallest read-only roster: choose the smallest useful read-only roster, start with two agents when enough, and add a third only when it covers a distinct risk or evidence gap. Do not include `so_implementer` before synthesis.
+5. Emit bounded prompts: one self-contained prompt per agent with context, scope, non-goals, task, constraints, structured expected output, confidence, and evidence versus inference requirements.
+6. Spawn read-only agents first: call `spawn_agent` or the available subagent-spawning tool after the compact proof passes.
+7. Wait and synthesize: wait for every spawned agent that affects the next decision, then merge facts, conflicts, uncertainty, risks, file targets, and tests.
+8. Decide whether workspace-write is justified: use a workspace-write agent only after synthesis, with exact write scope and verification needs.
+
+### Minimal initial rosters
+
+Use the smallest roster that covers independent tracks.
+
+- Review/audit: `so_mapper` for changed files, call paths, and boundaries; `so_reviewer` for correctness, security, and regression risks; `so_tester` for missing tests and verification commands. Add `so_docs_researcher` only when external API or version behavior matters.
+- Debugging/root-cause: `so_mapper` for execution path and likely failure region; `so_tester` for reproduction commands and targeted tests; `so_reviewer` only when fix risk, security, or hidden coupling is likely. Use `so_reproducer` only after mapper/tester scope narrowing.
+- Refactor/migration: `so_mapper` for affected APIs, call sites, and dependencies; `so_designer` for phased options, reversibility, and migration risk; `so_reviewer` for compatibility and hidden coupling; `so_tester` for regression strategy.
+- Docs/API/version-dependent task: `so_docs_researcher` for authoritative behavior and version constraints; `so_mapper` for where documented behavior affects code; add `so_tester` or `so_reviewer` depending on whether verification or risk is central.
+- Comparison/options: `so_designer` for options and tradeoffs; `so_reviewer` for risks and failure modes; add `so_mapper` only when repository structure is unclear.
+- Implementation after investigation: do not start with `so_implementer` unless the user explicitly requested edits and the write scope is clear. Prefer read-only mapping, review, and test planning first. Use one `so_implementer` only after synthesis, with exact workspace-write scope.
+
+### Required compact proof
+
+Before spawning, emit a compact why-parallel proof:
+
+```text
+Why parallel:
+- independent track 1: <track and expected output>
+- independent track 2: <track and expected output>
+Blockers checked: opt-out, child-agent recursion, strict sequence, write conflict, dirty repo/isolation, external side effects, privacy/tool limits.
+Initial roster: <agent names and read-only/workspace-write modes>
+```
+
+The proof must show at least two independent tracks, blockers checked, and the initial roster. If any part is weak, do not spawn.
+
 ## Spawn subagents when at least two are true
 
 - Multi-file, multi-module, or multi-service change.
@@ -121,6 +165,7 @@ Subagents:
   mode: read-only | workspace-write
   task: <specific bounded task>
   expected output: <evidence format>
+Initial roster: <agent names and read-only/workspace-write modes>
 ```
 
 Keep this proof to one or two lines plus the compact blocker checklist. It is a pre-spawn check, not a long planning ritual; if the proof fails, choose `sequential-plan` or `single-thread`.
@@ -146,14 +191,22 @@ Use this order when the decision is `parallel-subagents`:
 
 ### Spawn Template
 
+For read-only tasks, the default constraint remains: do not edit files; do not spawn more agents; report uncertainty.
+
 ```text
 Spawn <agent-name> prompt:
 agent_type: <agent-name>
 mode: read-only | workspace-write
+context: <relevant facts, host rules, current branch/status if relevant, and why this track matters>
 scope: <files, subsystem, or question>
+non-goals: <what not to inspect, decide, or change>
 task: <specific bounded task>
-constraints: do not edit files; do not spawn more agents; report uncertainty
-expected output: facts, file paths, evidence, risks, tests, confidence
+constraints: no edits unless workspace-write scope is explicit; do not spawn more agents; no recursive fan-out; report uncertainty
+structured expected output:
+- facts with file paths, symbols, commands, or source locations
+- evidence versus inference
+- risks, tests, and recommended next action
+- confidence: high | medium | low, with the reason
 ```
 
 For workspace-write tasks, add:
