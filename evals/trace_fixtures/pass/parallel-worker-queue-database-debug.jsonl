@@ -1,0 +1,6 @@
+{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"Subagent orchestration gate\nResult: use-subagent-orchestrator\nReason: Strong orchestration signals detected."}]}}
+{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"Subagents:\n- so_mapper\n  mode: read-only\n  scope: worker, queue, and database failure paths\n  expected output: relevant files, risks, uncertainty\n  constraints: no recursive fan-out\n- so_tester\n  mode: read-only\n  scope: failure reproduction and verification commands\n  expected output: targeted test commands and gaps\n  constraints: no recursive fan-out"}]}}
+{"type":"item.started","item":{"type":"function_call","name":"spawn_agent","arguments":{"agent_type":"so_mapper"}}}
+{"type":"item.started","item":{"type":"function_call","name":"spawn_agent","arguments":{"agent_type":"so_tester"}}}
+{"type":"item.started","item":{"type":"function_call","name":"wait_agent"}}
+{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"Synthesis:\n- Agreed facts: mapped worker, queue, and database failure surfaces.\n- Tests/verification: run targeted worker, queue, and database regression tests."}]}}

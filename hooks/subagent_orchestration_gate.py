@@ -38,7 +38,36 @@ CUSTOM_AGENT_NAMES = (
 )
 CUSTOM_AGENT_PATTERN = "(?:" + "|".join(re.escape(name) for name in CUSTOM_AGENT_NAMES) + ")"
 CUSTOM_AGENT_HEADER_PATTERN = rf"(?m)^\s*agent_type:\s*{CUSTOM_AGENT_PATTERN}\b"
-SURFACE_TERM_PATTERN = r"(?:frontend|backend|api|web|server|client|database|db|service)s?"
+SURFACE_TERM_PATTERNS = (
+    r"frontend",
+    r"backend",
+    r"apis?",
+    r"web",
+    r"servers?",
+    r"clients?",
+    r"databases?",
+    r"dbs?",
+    r"services?",
+    r"auth",
+    r"authentication",
+    r"authorization",
+    r"billing",
+    r"payments?",
+    r"checkout",
+    r"workers?",
+    r"jobs?",
+    r"queues?",
+    r"caches?",
+    r"storage",
+    r"search\s+(?:services?|subsystems?|engines?|index(?:es|ing)?|indices)",
+    r"cli",
+    r"mobile",
+    r"infra(?:structure)?",
+    r"packages?",
+    r"workspaces?",
+    r"monorepo",
+)
+SURFACE_TERM_PATTERN = "(?:" + "|".join(SURFACE_TERM_PATTERNS) + ")"
 FORMAL_REVIEW_TARGET_PATTERN = (
     r"(?:branch|pr|pull request|mr|merge request|diff|patch|code|changes?|commits?|"
     r"security|threat|vulnerabilit(?:y|ies)|risks?|architecture|implementation|modules?|"
@@ -66,7 +95,8 @@ SOURCE_FILE_PATTERN = (
     r"\b[\w./-]+\.(?:ts|tsx|js|jsx|py|go|rs|java|rb|php|cs|cpp|c|h|md|json|ya?ml|toml)\b"
 )
 SINGLE_TARGET_SCOPE_PATTERN = (
-    r"\b(?:this\s+)?(?:one|single)[- ]?(?:failing\s+)?"
+    r"\b(?:this\s+)?(?:one(?!\s+or\s+more\b)|single)[- ]?(?:failing\s+)?"
+    r"(?:(?:[\w/-]+\s+){0,5})?"
     r"(?:file|module|component|function|test|case|assertion|stack trace)\b"
 )
 BROAD_DEBUG_SCOPE_PATTERN = (
@@ -77,16 +107,29 @@ DEBUG_SCOPE_BLOCKING_HITS = {
     "architecture/refactor",
     "comparison/options",
     "explicit subagents",
-    "multi-surface scope",
     "research/docs",
 }
 LIGHTWEIGHT_TEXT_REVIEW_SUBJECT_PATTERN = (
-    r"\b(?:readme|paragraph|copy|wording|clarity|grammar|typos?|sentence)\b"
+    r"\b(?:readme|docs?|d[eo]cument(?:s|ation|ations)?|paragraph|copy|wording|clarity|grammar|typos?|sentence)\b"
 )
 LIGHTWEIGHT_TEXT_REVIEW_VERB_PATTERN = r"\b(?:review|check|edit|proofread)\b"
 HIGH_RISK_REVIEW_TERM_PATTERN = (
     r"\b(?:security|threat|vulnerabilit(?:y|ies)|risks?|architecture|implementation|tests?)\b"
 )
+LIGHTWEIGHT_TEXT_REVIEW_ALLOWED_HITS = {
+    "multi-surface scope",
+    "research/docs",
+    "review/audit",
+    "setup/config",
+    "validation sweep",
+}
+SINGLE_TARGET_COMPARISON_BLOCKING_HITS = {
+    "architecture/refactor",
+    "debugging/root-cause",
+    "explicit subagents",
+    "review/audit",
+    "tests/verification",
+}
 CONDITIONAL_VALUE_PATTERN = (
     r"(?:useful|valuable|needed|necessary|helpful|beneficial|warranted|appropriate|worthwhile|"
     r"(?:it\s+)?adds?\s+value|(?:it\s+)?reduces?\s+risk|(?:it\s+)?materially\s+helps?)"
@@ -145,7 +188,7 @@ def has_single_target_review_scope(text: str, hits: Iterable[str]) -> bool:
     unique_hits = set(hits)
     if "review/audit" not in unique_hits:
         return False
-    if unique_hits & {"architecture/refactor", "explicit subagents", "multi-surface scope"}:
+    if unique_hits & {"architecture/refactor", "explicit subagents"}:
         return False
 
     return has_single_named_target(text)
@@ -165,7 +208,7 @@ def has_single_target_debug_scope(text: str, hits: Iterable[str]) -> bool:
 
 def is_lightweight_text_review(text: str, hits: Iterable[str]) -> bool:
     unique_hits = set(hits)
-    if unique_hits - {"review/audit"}:
+    if unique_hits - LIGHTWEIGHT_TEXT_REVIEW_ALLOWED_HITS:
         return False
     if re.search(HIGH_RISK_REVIEW_TERM_PATTERN, text, flags=re.IGNORECASE):
         return False
@@ -173,6 +216,16 @@ def is_lightweight_text_review(text: str, hits: Iterable[str]) -> bool:
         re.search(LIGHTWEIGHT_TEXT_REVIEW_VERB_PATTERN, text, flags=re.IGNORECASE)
         and re.search(LIGHTWEIGHT_TEXT_REVIEW_SUBJECT_PATTERN, text, flags=re.IGNORECASE)
     )
+
+
+def has_single_target_comparison_scope(text: str, hits: Iterable[str]) -> bool:
+    unique_hits = set(hits)
+    if "comparison/options" not in unique_hits:
+        return False
+    if unique_hits & SINGLE_TARGET_COMPARISON_BLOCKING_HITS:
+        return False
+
+    return has_single_named_target(text)
 
 
 def has_canonical_child_agent_header(text: str) -> bool:
@@ -264,9 +317,9 @@ COMPLEX_SIGNALS = (
     )),
     SignalSet("architecture/refactor", 3, (r"architecture", r"refactor", r"migration", r"rewrite", r"large change", r"multi[- ]?file", r"multi[- ]?module", r"multi[- ]?service")),
     SignalSet("multi-surface scope", 3, (
-        rf"\bacross\b.*\b{SURFACE_TERM_PATTERN}\b",
+        rf"\bacross\b.*\b{SURFACE_TERM_PATTERN}\b.*\b{SURFACE_TERM_PATTERN}\b",
         rf"\b{SURFACE_TERM_PATTERN}\b.*\band\b.*\b{SURFACE_TERM_PATTERN}\b",
-        rf"\bspanning\b.*\b{SURFACE_TERM_PATTERN}\b",
+        rf"\bspanning\b.*\b{SURFACE_TERM_PATTERN}\b.*\b{SURFACE_TERM_PATTERN}\b",
     )),
     SignalSet("tests/verification", 2, (r"\btests?\b", r"coverage", r"verify", r"\bvalidat(?:e|ion)\b", r"reproduce", r"benchmark", r"performance", r"\bci\b")),
     SignalSet("research/docs", 2, (DOCUMENTATION_TERM_PATTERN, r"api", r"version", r"latest", r"framework", r"library")),
@@ -333,6 +386,12 @@ def classify(prompt: str) -> tuple[str, str]:
         return (
             "single-thread-default",
             format_signal_reason("Lightweight text review detected", ["text-only review"]),
+        )
+
+    if complex_score >= 5 and has_single_target_comparison_scope(text, complex_hits):
+        return (
+            "single-thread-default",
+            format_signal_reason("Single-target comparison detected", complex_hits),
         )
 
     if complex_score >= 5 and has_single_target_review_scope(text, complex_hits):

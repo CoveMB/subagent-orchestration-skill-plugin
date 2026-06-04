@@ -79,6 +79,10 @@ FALSE_POSITIVE_CASES = [
     ("Explain how subagents work without using them.", "single-thread-likely"),
     ("Summarize the subagent-orchestrator skill behavior.", "single-thread-likely"),
     ("Review the README wording for clarity.", "single-thread-default"),
+    ("Review auth and billing docs for clarity only.", "single-thread-default"),
+    ("Compare package and workspace names in package.json.", "single-thread-default"),
+    ("Debug this one failing cache and storage test.", "orchestration-check"),
+    ("Debug auth and search for root cause.", "orchestration-check"),
 ]
 HIGH_VALUE_EDGE_CASES = [
     ("Audit src/auth.ts for vulnerabilities and missing tests.", "orchestration-check"),
@@ -89,6 +93,18 @@ HIGH_VALUE_EDGE_CASES = [
     ("Review this README paragraph for wording clarity only. Do not inspect the repo.", "single-thread-default"),
     ("Explain how subagents work without using them.", "single-thread-likely"),
     ("Avoid extra agent/tool cost. Review this branch linearly.", "orchestration-opt-out"),
+]
+DOMAIN_LANGUAGE_MULTI_SURFACE_CASES = [
+    (
+        "Audit authentication, billing, and background jobs for security regressions and missing tests.",
+        "use-subagent-orchestrator",
+    ),
+    ("Investigate failures spanning worker, queue, and database.", "use-subagent-orchestrator"),
+    ("Investigate failures spanning search index and cache.", "use-subagent-orchestrator"),
+]
+DOMAIN_LANGUAGE_BOUNDARY_CASES = [
+    ("Review the authentication module for clarity.", "single-thread-default"),
+    ("Refactor one CLI command in src/cli/login.ts.", "orchestration-check"),
 ]
 
 
@@ -1128,6 +1144,12 @@ def test_classifier_avoids_subagent_topic_false_positives() -> None:
 
 def test_classifier_covers_high_value_hook_edge_cases() -> None:
     assert_prompt_decisions(HIGH_VALUE_EDGE_CASES)
+
+
+def test_classifier_detects_domain_language_multi_surface_scope() -> None:
+    for prompt, expected_result in DOMAIN_LANGUAGE_MULTI_SURFACE_CASES:
+        assert_context_includes_labels(prompt, expected_result, ["multi-surface scope"])
+    assert_prompt_decisions(DOMAIN_LANGUAGE_BOUNDARY_CASES)
 
 
 def test_classifier_recursion_guard_variants() -> None:

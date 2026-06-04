@@ -1,0 +1,7 @@
+{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"Subagent orchestration gate\nResult: use-subagent-orchestrator\nReason: Strong orchestration signals detected."}]}}
+{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"Subagents:\n- so_mapper\n  mode: read-only\n  scope: authentication, billing, and background jobs\n  expected output: affected files, boundaries, uncertainty\n  constraints: no recursive fan-out\n- so_reviewer\n  mode: read-only\n  scope: security regressions\n  expected output: real findings only\n  constraints: no recursive fan-out\n- so_tester\n  mode: read-only\n  scope: missing test coverage\n  expected output: targeted tests and gaps\n  constraints: no recursive fan-out"}]}}
+{"type":"item.started","item":{"type":"function_call","name":"spawn_agent","arguments":{"agent_type":"so_mapper"}}}
+{"type":"item.started","item":{"type":"function_call","name":"spawn_agent","arguments":{"agent_type":"so_reviewer"}}}
+{"type":"item.started","item":{"type":"function_call","name":"spawn_agent","arguments":{"agent_type":"so_tester"}}}
+{"type":"item.started","item":{"type":"function_call","name":"wait_agent"}}
+{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"Synthesis:\n- Security audit covered authentication, billing, and background job surfaces.\n- Tests/verification: run targeted auth, billing, and jobs regression tests."}]}}
