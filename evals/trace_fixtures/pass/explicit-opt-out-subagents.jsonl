@@ -1,0 +1,1 @@
+{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"Subagent orchestration gate\nResult: orchestration-opt-out\nReason: Explicit orchestration opt-out detected."}]}}

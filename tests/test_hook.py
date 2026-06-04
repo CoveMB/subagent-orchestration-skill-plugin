@@ -1018,6 +1018,13 @@ def test_classifier_preserves_conditional_orchestration() -> None:
         ("Use subagents only if helpful for the implementation review.", "orchestration-check"),
         ("Run parallel agents only if valuable for the audit.", "orchestration-check"),
         ("Orchestration only if needed for this refactor.", "orchestration-check"),
+        ("Use subagents if helpful; otherwise work linearly.", "orchestration-check"),
+        ("Use agents where appropriate for this review.", "orchestration-check"),
+        ("Delegate only if it reduces risk.", "orchestration-check"),
+        ("Orchestrate as needed, but keep it lightweight.", "orchestration-check"),
+        ("Use parallel agents when worthwhile.", "orchestration-check"),
+        ("Only orchestrate if it adds value.", "orchestration-check"),
+        ("Spawn read-only agents where warranted.", "orchestration-check"),
     ])
 
 

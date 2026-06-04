@@ -73,6 +73,16 @@ LIGHTWEIGHT_TEXT_REVIEW_VERB_PATTERN = r"\b(?:review|check|edit|proofread)\b"
 HIGH_RISK_REVIEW_TERM_PATTERN = (
     r"\b(?:security|threat|vulnerabilit(?:y|ies)|risks?|architecture|implementation|tests?)\b"
 )
+CONDITIONAL_VALUE_PATTERN = (
+    r"(?:useful|valuable|needed|necessary|helpful|beneficial|warranted|appropriate|worthwhile|"
+    r"(?:it\s+)?adds?\s+value|(?:it\s+)?reduces?\s+risk|(?:it\s+)?materially\s+helps?)"
+)
+CONDITIONAL_CONNECTOR_PATTERN = r"(?:only\s+if|if|when|where|unless)"
+CONDITIONAL_AGENT_TARGET_PATTERN = r"(?:sub[- ]?agents?|(?:parallel|read[- ]?only)\s+agents?|agents?)"
+CONDITIONAL_ORCHESTRATION_TARGET_PATTERN = (
+    rf"(?:{CONDITIONAL_AGENT_TARGET_PATTERN}|orchestrat(?:ion|e))"
+)
+CONDITIONAL_AGENT_ACTION_PATTERN = r"(?:use|spawn|run)"
 
 
 def count_signals(text: str, signals: Iterable[SignalSet]) -> tuple[int, list[str]]:
@@ -182,9 +192,12 @@ RECURSION_GUARD_SIGNALS = (
 
 CONDITIONAL_ORCHESTRATION_SIGNALS = (
     SignalSet("conditional orchestration", 4, (
-        r"\b(?:sub[- ]?agents?|orchestrat(?:ion|e))\b.*\bunless (?:useful|valuable|needed|necessary|helpful)\b",
-        r"\b(?:use|spawn|run)\b.*\b(?:sub[- ]?agents?|parallel agents?)\b.*\bonly if (?:useful|valuable|needed|necessary|helpful)\b",
-        r"\b(?:sub[- ]?agents?|parallel agents?|orchestrat(?:ion|e))\b.*\bonly if (?:useful|valuable|needed|necessary|helpful)\b",
+        rf"\b{CONDITIONAL_AGENT_ACTION_PATTERN}\b.{{0,80}}\b{CONDITIONAL_AGENT_TARGET_PATTERN}\b.{{0,40}}\b{CONDITIONAL_CONNECTOR_PATTERN}\s+{CONDITIONAL_VALUE_PATTERN}\b",
+        rf"\bdelegate\b.{{0,80}}\b{CONDITIONAL_CONNECTOR_PATTERN}\s+{CONDITIONAL_VALUE_PATTERN}\b",
+        rf"\borchestrat(?:e|ion)\b.{{0,40}}\b{CONDITIONAL_CONNECTOR_PATTERN}\s+{CONDITIONAL_VALUE_PATTERN}\b",
+        rf"\b{CONDITIONAL_ORCHESTRATION_TARGET_PATTERN}\b.{{0,40}}\b{CONDITIONAL_CONNECTOR_PATTERN}\s+{CONDITIONAL_VALUE_PATTERN}\b",
+        rf"\b{CONDITIONAL_AGENT_ACTION_PATTERN}\b.{{0,80}}\b{CONDITIONAL_AGENT_TARGET_PATTERN}\b.{{0,40}}\bas\s+{CONDITIONAL_VALUE_PATTERN}\b",
+        rf"\borchestrat(?:e|ion)\b.{{0,40}}\bas\s+{CONDITIONAL_VALUE_PATTERN}\b",
     )),
 )
 
