@@ -305,6 +305,12 @@ def test_orchestrator_skill_defines_spawn_boundaries_and_synthesis() -> None:
             "agent_type: <agent-name>",
             "keep `fork_context` unset",
             "spawn <agent-name> prompt:",
+            "why parallel:",
+            "independent track 1:",
+            "independent track 2:",
+            "blockers checked:",
+            "complexity alone is not enough",
+            "if the proof fails, choose `sequential-plan` or `single-thread`",
         ],
         ORCHESTRATOR_SKILL,
     )

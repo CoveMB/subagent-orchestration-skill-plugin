@@ -29,10 +29,11 @@ Use subagent-orchestrator only for explicit subagent/orchestration requests or c
 
 For complex debugging, PR review, refactors, architecture exploration, test failures, migrations, performance work, security-sensitive work, unfamiliar APIs, or multi-file changes, the `subagent-orchestrator` skill may be used as a complement or fallback.
 
-When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, or unclear boundaries require it. Subagents are read-only by default; define clear boundaries first.
+When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, or unclear boundaries require it. Subagents are read-only by default; give a compact why-parallel proof and define clear boundaries first.
 
 If a parallel workflow is valuable:
 
+- briefly state why at least two bounded tracks can run independently,
 - explicitly spawn bounded subagents,
 - prefer read-only exploration before edits,
 - require explicit write scope or isolated worktrees for parallel mutation,

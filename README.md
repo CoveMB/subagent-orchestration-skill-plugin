@@ -8,6 +8,7 @@ This skill plugin gives Codex a quiet, compatibility-oriented orchestration gate
 - complex prompts still receive only result/reason metadata by default,
 - default/simple prompts do not write, spawn, or activate a global bootstrap automatically,
 - when `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation,
+- before spawning parallel subagents, briefly state why parallel work is useful, name at least two independent tracks with clear outputs, and check blockers,
 - still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, or unclear boundaries require it,
 - parallel subagents are used only when they add real value.
 
@@ -57,7 +58,7 @@ For Codex, the quiet behavior comes from three layers together:
 2. **Orchestration skill**: `subagent-orchestrator` chooses `single-thread`, `sequential-plan`, or `parallel-subagents`.
 3. **UserPromptSubmit hook**: reports a result and reason through valid `additionalContext`.
 
-The hook does not spawn agents by itself or inject execution instructions. After the orchestration skill selects `parallel-subagents`, the assistant must call `spawn_agent` or the available subagent-spawning tool in that same turn after defining bounded roles. It should only fall back to sequential work when no spawning tool is available or higher-priority rules block spawning.
+The hook does not spawn agents by itself or inject execution instructions. After the orchestration skill selects `parallel-subagents`, the assistant must call `spawn_agent` or the available subagent-spawning tool in that same turn after giving a compact why-parallel proof, checking blockers, and defining bounded roles. It should only fall back to sequential work when no spawning tool is available, the proof fails, or higher-priority rules block spawning.
 
 Hook result mapping:
 
@@ -380,7 +381,7 @@ Contract-mode live runs also append a bounded live-eval execution limit to the c
 
 For prompt rows where `must_not_spawn` is true, contract-mode live runs add a stronger no-spawn case limit: do not perform the underlying branch review, audit, debug, or documentation sweep; finish after a couple of quick read-only checks. This keeps boundary and opt-out cases focused on hook behavior instead of turning them into full repository reviews.
 
-In contract mode, strong orchestration cases are expected to emit a pre-spawn assistant boundary that includes `Subagent orchestration gate`, `Result: use-subagent-orchestrator`, `Reason:`, and the bounded `Subagents:` plan before any spawn call. Spawn prompts should start with the exact `agent_type: so_*` line, leave `fork_context` unset when using custom agent types, and carry any needed context in the prompt body.
+In contract mode, strong orchestration cases are expected to emit a pre-spawn assistant boundary that includes `Subagent orchestration gate`, `Result: use-subagent-orchestrator`, `Reason:`, a compact `Why parallel:` proof naming at least two independent tracks, `Blockers checked:`, and the bounded `Subagents:` plan before any spawn call. Spawn prompts should start with the exact `agent_type: so_*` line, leave `fork_context` unset when using custom agent types, and carry any needed context in the prompt body.
 
 For spawn-contract evals, keep the subagent-capable user/profile configuration enabled. `--codex-arg=--ignore-user-config` is useful for metadata-only smoke tests, but it can remove the live spawn surface and turn strong orchestration cases into expected failures.
 

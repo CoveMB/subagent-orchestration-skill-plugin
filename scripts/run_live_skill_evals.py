@@ -18,7 +18,7 @@ HOOK = ROOT / "hooks" / "subagent_orchestration_gate.py"
 HOOK_MODE_CONTRACT = "contract"
 SPAWN_CONTRACT_CONTEXT = "\n".join([
     "Contract mode: live-eval spawn contract.",
-    "When using parallel subagents, define bounded roles before the first spawn.",
+    "When using parallel subagents, give a compact why-parallel proof and define bounded roles before the first spawn.",
     "Subagents:",
     "- agent_type: so_mapper",
     "  mode: read-only",
@@ -37,7 +37,9 @@ SPAWN_CONTRACT_CONTEXT = "\n".join([
     "  constraints: no recursive fan-out",
     "Spawn prompt requirements:",
     "Before first spawn, send an assistant message that starts with Subagent orchestration gate.",
-    "That message must include Result: use-subagent-orchestrator, Reason:, and Subagents: before any spawn tool call.",
+    "That message must include Result: use-subagent-orchestrator, Reason:, Why parallel:, independent track 1:, independent track 2:, Blockers checked:, and Subagents: before any spawn tool call.",
+    "Keep the why-parallel proof compact; use it to show that at least two bounded tracks can run independently with clear outputs.",
+    "If the why-parallel proof or blocker check fails, choose sequential-plan or single-thread instead of spawning.",
     "List each selected role with mode, scope, expected output, and no recursive fan-out.",
     "Use literal field labels mode:, scope:, expected output:, and constraints: in the Subagents: message.",
     "First line of every spawn prompt must be one of:",

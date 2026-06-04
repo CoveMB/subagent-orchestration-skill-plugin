@@ -106,6 +106,10 @@ def spawn_boundary_event() -> dict[str, object]:
         "Subagent orchestration gate\n"
         "Result: use-subagent-orchestrator\n"
         "Reason: Strong orchestration signals detected.\n\n"
+        "Why parallel:\n"
+        "- independent track 1: map targeted eval work and return evidence\n"
+        "- independent track 2: identify targeted verification and return commands\n"
+        "Blockers checked: opt-out, child-agent recursion, strict sequence, write conflict, dirty repo/isolation, external side effects, privacy/tool limits.\n"
         "Subagents:\n"
         "- so_mapper\n"
         "  mode: read-only\n"
@@ -541,6 +545,50 @@ def test_eval_grader_applies_default_spawn_boundary_terms_for_spawn_cases() -> N
             traces / "parallel-debug.jsonl",
             [
                 message_event("Subagent orchestration gate\nResult: use-subagent-orchestrator\nReason: Strong orchestration signals detected."),
+                spawn_event("so_mapper"),
+            ],
+        )
+
+        result = run_grader(prompts, traces)
+
+    assert result["overall_pass"] is False
+    assert result["cases"][0]["checks"]["required_pre_spawn_text"] is False
+
+
+def test_eval_grader_default_spawn_boundary_requires_parallel_proof_terms() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        prompts = root / "prompts.jsonl"
+        traces = root / "traces"
+        traces.mkdir()
+        write_jsonl(
+            prompts,
+            [
+                {
+                    "id": "parallel-debug",
+                    "prompt": "Debug a flaky regression across API and web tests.",
+                    "expected_decision": "use-subagent-orchestrator",
+                    "should_spawn": True,
+                    "must_not_spawn": False,
+                    "expected_spawn_agents": ["so_mapper"],
+                    "rubric_ids": ["decision", "spawn"],
+                },
+            ],
+        )
+        write_jsonl(
+            traces / "parallel-debug.jsonl",
+            [
+                message_event(
+                    "Subagent orchestration gate\n"
+                    "Result: use-subagent-orchestrator\n"
+                    "Reason: Strong orchestration signals detected.\n\n"
+                    "Subagents:\n"
+                    "- so_mapper\n"
+                    "  mode: read-only\n"
+                    "  scope: map files\n"
+                    "  expected output: evidence\n"
+                    "  constraints: no recursive fan-out"
+                ),
                 spawn_event("so_mapper"),
             ],
         )

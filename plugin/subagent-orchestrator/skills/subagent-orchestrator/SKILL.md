@@ -68,8 +68,11 @@ Decide internally whether the task fits exactly one of:
    - Do not spawn subagents yet.
 
 3. `parallel-subagents`
-   - The task can be decomposed into independent exploration, reproduction, test review, documentation verification, architecture mapping, implementation alternatives, or risk review.
+   - The task can be decomposed into at least two bounded, independent exploration, reproduction, test review, documentation verification, architecture mapping, implementation alternative, or risk review tracks.
+   - Each track has a clear expected output and can make useful progress without waiting on the others.
    - Subagents are likely to reduce context pollution, improve evidence, or save wall-clock time.
+
+Complexity alone is not enough. Select `parallel-subagents` only when real parallelizable tracks exist; otherwise use `sequential-plan` or `single-thread`.
 
 ## Spawn subagents when at least two are true
 
@@ -108,6 +111,10 @@ Plan: <short plan>
 If using subagents, include:
 
 ```text
+Why parallel:
+- independent track 1: <mapping/reproduction/testing/docs/etc. and expected output>
+- independent track 2: <review/testing/design/etc. and expected output>
+Blockers checked: opt-out, child-agent recursion, strict sequence, write conflict, dirty repo/isolation, external side effects, privacy/tool limits.
 Subagents:
 - name: <agent name>
   role: <bounded role>
@@ -116,9 +123,11 @@ Subagents:
   expected output: <evidence format>
 ```
 
+Keep this proof to one or two lines plus the compact blocker checklist. It is a pre-spawn check, not a long planning ritual; if the proof fails, choose `sequential-plan` or `single-thread`.
+
 Then spawn the agents, wait for all results, and synthesize before acting.
 
-Actual spawning is part of the contract. When the execution shape is `parallel-subagents`, call `spawn_agent` or the available subagent-spawning tool in the same turn after defining bounded roles. Do not stop at a plan, recommendation, or statement that subagents would be useful. If no subagent-spawning tool is available, or a higher-priority instruction blocks spawning, state that blocker and proceed with the closest sequential fallback.
+Actual spawning is part of the contract. When the execution shape is `parallel-subagents`, call `spawn_agent` or the available subagent-spawning tool in the same turn after giving the compact proof and defining bounded roles. Do not stop at a plan, recommendation, or statement that subagents would be useful. If no subagent-spawning tool is available, the proof fails, or a higher-priority instruction blocks spawning, state that blocker and proceed with the closest sequential fallback.
 
 When the available subagent-spawning tool does not expose a dedicated `agent_type` parameter, begin the spawned task prompt with `agent_type: <agent-name>` so the role remains auditable in live traces. Use the exact names below, such as `so_mapper`, `so_tester`, and `so_reviewer`. When using a custom `agent_type`, keep `fork_context` unset and include the required context in the spawned task prompt instead.
 
@@ -126,7 +135,7 @@ When the available subagent-spawning tool does not expose a dedicated `agent_typ
 
 Use this order when the decision is `parallel-subagents`:
 
-1. State the orchestration decision, reason, plan, and bounded subagents.
+1. State the orchestration decision, reason, compact why-parallel proof, blocker checklist, and bounded subagents.
 2. Call `spawn_agent` or the available subagent-spawning tool for the smallest useful set of read-only agents first.
 3. Give each agent one self-contained task, explicit mode, expected output, and no permission to fan out.
 4. Keep implementation agents for later unless the user already requested code changes and write scopes are disjoint.
@@ -235,6 +244,7 @@ Then implement the smallest safe plan.
 - Prefer read-only subagents before edit-capable subagents.
 - Keep each subagent bounded and independently useful.
 - Give each subagent a clear return format.
+- Before spawning, name at least two independent tracks and check blockers briefly; if the proof fails, use `sequential-plan` or `single-thread`.
 - If the decision is `parallel-subagents`, do not stop at a plan; spawn immediately or state the concrete blocker.
 - Do not recursively spawn subagents unless the user explicitly asks.
 - Wait for all subagents before final synthesis.

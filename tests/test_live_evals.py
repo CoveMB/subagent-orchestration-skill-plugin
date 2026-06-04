@@ -316,6 +316,8 @@ def test_live_runner_contract_hook_mode_adds_harness_context_without_child_env()
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert result["hook_mode"] == "contract"
     assert "Contract mode: live-eval spawn contract." in trace_text
+    assert "Why parallel:" in trace_text
+    assert "Blockers checked:" in trace_text
     assert "Subagents:" in trace_text
     assert "agent_type: so_mapper" in trace_text
     assert "HOOK_MODE:" in trace_text

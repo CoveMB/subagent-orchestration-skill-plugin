@@ -57,7 +57,7 @@ Use this skill when orchestration is explicitly requested or when `using-subagen
 
 It is most useful for complex debugging, branch review, refactors, migrations, performance work, security-sensitive work, or multi-module work. Parallel subagents make sense only when bounded independent tracks can improve correctness, evidence quality, speed, or context hygiene.
 
-Subagent output is work product. It does not replace required tests, citations, approvals, or direct verification. If the skill selects `parallel-subagents` and a spawning tool is available, state the role, mode, scope, expected output, and no recursive fan-out requirement before spawning bounded agents in the same turn.
+Subagent output is work product. It does not replace required tests, citations, approvals, or direct verification. If the skill selects `parallel-subagents` and a spawning tool is available, briefly state why parallel work is useful, name at least two independent tracks with clear outputs, check blockers, then state the role, mode, scope, expected output, and no recursive fan-out requirement before spawning bounded agents in the same turn.
 
 ### Example: single-thread
 
@@ -97,6 +97,10 @@ Expected result:
 Phase 1 read-only subagents:
 
 ```text
+Why parallel:
+- independent track 1: map auth flow files and likely failure boundaries
+- independent track 2: identify targeted tests and coverage gaps
+Blockers checked: opt-out, child-agent recursion, strict sequence, write conflict, dirty repo/isolation, external side effects, privacy/tool limits.
 Subagents:
 - name: so_mapper
   mode: read-only
@@ -135,6 +139,10 @@ Review this branch for correctness, security, behavior regressions, and missing 
 Expected result:
 
 ```text
+Why parallel:
+- independent track 1: map changed files, execution paths, and dependencies
+- independent track 2: review correctness, security, regressions, and missing-test risk
+Blockers checked: opt-out, child-agent recursion, strict sequence, write conflict, dirty repo/isolation, external side effects, privacy/tool limits.
 Subagents:
 - name: so_mapper
   mode: read-only
