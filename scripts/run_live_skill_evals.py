@@ -17,7 +17,7 @@ DEFAULT_PROMPTS = ROOT / "evals" / "skill_prompts.jsonl"
 HOOK = ROOT / "hooks" / "subagent_orchestration_gate.py"
 HOOK_MODE_CONTRACT = "contract"
 SPAWN_CONTRACT_CONTEXT = "\n".join([
-    "Contract mode: live-eval spawn contract.",
+    "Eval mode: live-eval spawn trace contract.",
     "When using parallel subagents, give a compact why-parallel proof and define bounded roles before the first spawn.",
     "Do not treat dirty repo state as a blocker for bounded read-only mapper, reviewer, tester, docs, or research agents.",
     "Treat dirty repo state as a blocker only for workspace-write agents when isolation is unclear.",
@@ -91,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-local-hook-context", action="store_true", help="Do not write the synthetic local hook.context trace event; use this when testing runtime hook integration.")
     parser.add_argument("--inject-local-hook-context", action="store_true", help="Prepend repo-local hook context to the child Codex prompt. Use for contract-mode evals when runtime hook integration is not guaranteed.")
     parser.add_argument("--grade-profile", choices=("live", "offline"), default="live", help="Grading profile. live records command counts without failing on command budgets.")
-    parser.add_argument("--hook-mode", choices=("metadata", "contract"), default="metadata", help="Hook output mode for live runs. metadata is production-like; contract adds spawn-contract guidance for end-to-end evals.")
+    parser.add_argument("--hook-mode", choices=("metadata", "contract"), default="metadata", help="Hook output mode for live runs. metadata is production-like; contract adds eval-specific spawn-trace guidance for end-to-end evals.")
     parser.add_argument("--overwrite", action="store_true", help="Allow replacing existing trace files.")
     return parser.parse_args()
 

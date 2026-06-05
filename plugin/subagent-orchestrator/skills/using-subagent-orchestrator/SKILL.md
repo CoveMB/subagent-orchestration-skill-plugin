@@ -1,6 +1,6 @@
 ---
 name: using-subagent-orchestrator
-description: Optional legacy compatibility gate for deciding whether the subagent-orchestrator execution-shape helper should be applied. Use only when explicitly invoked, when a quiet hook hint selects it, or for clearly complex work not already covered by existing orchestration, routing, bootstrap, skill-selection, or agent-management frameworks. Skip for child subagent tasks, explicit opt-outs, simple/default work, and any task already governed by another orchestration system.
+description: Optional legacy compatibility gate for deciding whether the subagent-orchestrator execution-shape helper should be applied. Use only when explicitly invoked, when a hook contract selects it, or for clearly complex work not already covered by existing orchestration, routing, bootstrap, skill-selection, or agent-management frameworks. Skip for child subagent tasks, explicit opt-outs, simple/default work, and any task already governed by another orchestration system.
 ---
 
 # Using Subagent Orchestrator
@@ -40,7 +40,7 @@ Before invoking `subagent-orchestrator`:
 
 ## First step
 
-If this skill is explicitly invoked or selected by a quiet hook hint, classify the prompt internally:
+If this skill is explicitly invoked or selected by a hook contract, classify the prompt internally:
 
 ```text
 Orchestration gate: skip | check | use-subagent-orchestrator
@@ -58,7 +58,7 @@ Do not print this gate for simple/default prompts.
 
 ## Hook result mapping
 
-Hook classification is metadata plus optional non-binding action hints; it does not spawn agents by itself or inject binding execution instructions.
+Hook classification is metadata plus a production orchestration contract for strong/check decisions. It does not spawn agents by itself. The contract tells the assistant to load the orchestrator, choose an execution shape, spawn only when `parallel-subagents` is selected and tool policy permits, and state the blocker when spawning is unavailable or blocked.
 
 | Hook result | Compatibility-gate action | Execution-shape action |
 | --- | --- | --- |

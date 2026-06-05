@@ -8,7 +8,7 @@ For simple/default prompts, stay silent and proceed single-threaded.
 
 Hook result mapping:
 
-Hook classification is metadata plus optional non-binding action hints; it does not spawn agents by itself or inject binding execution instructions.
+Hook classification is metadata plus a production orchestration contract for strong/check decisions. It does not spawn agents by itself. The contract tells the assistant to load the orchestrator, choose an execution shape, spawn only when `parallel-subagents` is selected and tool policy permits, and state the blocker when spawning is unavailable or blocked.
 
 | Hook result | Compatibility-gate action | Execution-shape action |
 | --- | --- | --- |

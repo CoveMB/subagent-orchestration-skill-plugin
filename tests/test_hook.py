@@ -165,7 +165,7 @@ def assert_context_uses_professional_status_format(context: str) -> None:
     assert lines[2].endswith("."), context
     assert ":" not in lines[2].removeprefix("Reason: "), context
     if len(lines) == 4:
-        assert lines[3].startswith("Action: Non-binding hint: "), context
+        assert lines[3].startswith("Action: "), context
         assert lines[3].endswith("."), context
     assert "Subagent orchestration gate result:" not in context, context
     assert "Subagent orchestration gate quiet hint" not in context, context
@@ -194,16 +194,17 @@ def assert_fail_open_output(output: dict[str, object]) -> None:
     assert "could not parse input" in str(output["systemMessage"]), output
 
 
-def assert_context_includes_action_hint(prompt: str, expected_result: str, terms: list[str]) -> None:
+def assert_context_includes_action_contract(prompt: str, expected_result: str, terms: list[str]) -> None:
     context = assert_context_reports_result_and_reason(prompt, expected_result)
     lower_context = context.lower()
-    assert "\naction: non-binding hint: " in lower_context, (prompt, context)
+    assert "\naction: production contract: " in lower_context, (prompt, context)
+    assert "non-binding hint" not in lower_context, (prompt, context)
     for term in terms:
         assert term in lower_context, (prompt, term, context)
     assert_context_uses_professional_status_format(context)
 
 
-def assert_context_has_no_action_hint(prompt: str, expected_result: str) -> None:
+def assert_context_has_no_action_contract(prompt: str, expected_result: str) -> None:
     context = assert_context_reports_result_and_reason(prompt, expected_result)
     assert "\nAction: " not in context, (prompt, context)
     assert_context_uses_professional_status_format(context)
@@ -1299,21 +1300,22 @@ def test_classifier_decision_matrix_covers_execution_shapes() -> None:
     assert_prompt_decisions(DECISION_MATRIX_CASES)
 
 
-def test_hook_emits_non_binding_action_hint_for_strong_orchestration() -> None:
-    assert_context_includes_action_hint(
+def test_hook_emits_production_action_contract_for_strong_orchestration() -> None:
+    assert_context_includes_action_contract(
         "Review this plugin and suggest meaningful improvements to orchestration triggers.",
         "use-subagent-orchestrator",
         [
             "invoke the subagent-orchestrator skill",
-            "compile bounded read-only subagent prompts",
-            "spawn the smallest useful read-only roster after a compact why-parallel proof",
-            "wait, then synthesize before edits",
+            "choose single-thread, sequential-plan, or parallel-subagents",
+            "if parallel-subagents is selected and tool policy permits",
+            "spawn the smallest useful bounded read-only roster",
+            "if spawning is unavailable or blocked",
         ],
     )
 
 
-def test_hook_emits_checklist_hint_for_conditional_orchestration() -> None:
-    assert_context_includes_action_hint(
+def test_hook_emits_checklist_contract_for_conditional_orchestration() -> None:
+    assert_context_includes_action_contract(
         "Use subagents if helpful; otherwise work linearly.",
         "orchestration-check",
         [
@@ -1325,11 +1327,11 @@ def test_hook_emits_checklist_hint_for_conditional_orchestration() -> None:
 
 
 def test_hook_keeps_opt_out_and_recursion_guard_non_spawning() -> None:
-    assert_context_has_no_action_hint(
+    assert_context_has_no_action_contract(
         "Do not use subagents. Review this patch for security risk.",
         "orchestration-opt-out",
     )
-    assert_context_has_no_action_hint(
+    assert_context_has_no_action_contract(
         "agent_type: so_tester\nmode: read-only\nscope: identify tests",
         "recursion-guard",
     )
@@ -1432,9 +1434,9 @@ def test_hook_ignores_live_eval_contract_mode_environment() -> None:
         "Subagent orchestration gate",
         "Result: use-subagent-orchestrator",
         "Reason: Strong orchestration signals detected (architecture/refactor, debugging/root-cause, tests/verification).",
-        "Action: Non-binding hint: invoke the subagent-orchestrator skill, compile bounded read-only subagent prompts, spawn the smallest useful read-only roster after a compact why-parallel proof, wait, then synthesize before edits.",
+        "Action: Production contract: invoke the subagent-orchestrator skill before broad work; choose single-thread, sequential-plan, or parallel-subagents; if parallel-subagents is selected and tool policy permits, emit a compact why-parallel proof, define bounded roles, spawn the smallest useful bounded read-only roster, wait, then synthesize before edits; if spawning is unavailable or blocked, state the blocker and continue with the closest safe fallback.",
     ]
-    assert "Contract mode: live-eval spawn contract." not in context
+    assert "Eval mode: live-eval spawn trace contract." not in context
 
     simple_context = run("What does this repository do?", contract_env)
     assert simple_context is not None
@@ -1458,9 +1460,9 @@ def test_hook_test_helper_does_not_inherit_hook_mode_environment_by_default() ->
             os.environ[HOOK_MODE_ENV] = previous_value
 
     assert context is not None
-    assert "Contract mode: live-eval spawn contract." not in context
+    assert "Eval mode: live-eval spawn trace contract." not in context
     assert explicit_context is not None
-    assert "Contract mode: live-eval spawn contract." not in explicit_context
+    assert "Eval mode: live-eval spawn trace contract." not in explicit_context
 
 
 def test_classifier_always_reports_result_and_reason() -> None:

@@ -5,8 +5,8 @@ UserPromptSubmit hook for Codex.
 Quiet compatibility behavior:
 - Every submitted prompt is classified before output is chosen.
 - Every successful classification returns a result and reason in additionalContext.
-- Strong/check classifications may append non-binding action hints.
-- The hook does not spawn subagents by itself.
+- Strong/check classifications append a production orchestration contract.
+- The hook remains side-effect free and does not spawn subagents by itself.
 
 Codex hook docs: UserPromptSubmit receives JSON on stdin with a `prompt` field and
 can return JSON with hookSpecificOutput.additionalContext.
@@ -584,15 +584,18 @@ SIMPLE_SIGNALS = (
     SignalSet("tiny edit", 3, (r"typo", r"one[- ]?line", r"tiny", r"small", r"quick", r"rename")),
     SignalSet("direct ask", 1, (r"^\s*(give me|write|draft|compose)\b",)),
 )
-ACTION_HINTS = {
+ACTION_CONTRACTS = {
     "use-subagent-orchestrator": (
-        "Non-binding hint: invoke the subagent-orchestrator skill, compile bounded read-only "
-        "subagent prompts, spawn the smallest useful read-only roster after a compact why-parallel proof, wait, then "
-        "synthesize before edits."
+        "Production contract: invoke the subagent-orchestrator skill before broad work; "
+        "choose single-thread, sequential-plan, or parallel-subagents; if parallel-subagents is selected and "
+        "tool policy permits, emit a compact why-parallel proof, define bounded roles, spawn the smallest useful "
+        "bounded read-only roster, wait, then synthesize before edits; if spawning is unavailable or blocked, "
+        "state the blocker and continue with the closest safe fallback."
     ),
     "orchestration-check": (
-        "Non-binding hint: run the orchestration checklist; spawn only if at least two independent "
-        "read-only tracks can return independently useful outputs and no concrete blocker exists."
+        "Production contract: run the orchestration checklist; load subagent-orchestrator only if independent "
+        "tracks are clear; spawn only if at least two independent read-only tracks can return independently useful "
+        "outputs, no concrete blocker exists, parallel-subagents is selected, and tool policy permits."
     ),
 }
 
@@ -725,8 +728,8 @@ def format_result_context(decision: str, reason: str) -> str:
         f"Result: {decision}",
         f"Reason: {reason}",
     ]
-    if action_hint := ACTION_HINTS.get(decision):
-        lines.append(f"Action: {action_hint}")
+    if action_contract := ACTION_CONTRACTS.get(decision):
+        lines.append(f"Action: {action_contract}")
     return "\n".join(lines)
 
 

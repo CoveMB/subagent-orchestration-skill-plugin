@@ -8,9 +8,9 @@ The source of truth still lives under `plugin/subagent-orchestrator/skills/`. If
 
 Use this skill when you need to decide whether orchestration belongs in the task at all. It is a compatibility gate, not a required first step for every prompt.
 
-It fits when the user invokes it directly, a quiet hook hint selects it, or the task is broad enough that a short orchestration check may help. It should stay out of simple default work. Repository instructions, user opt-outs, child-agent boundaries, and existing workflow systems still come first.
+It fits when the user invokes it directly, a hook contract selects it, or the task is broad enough that a short orchestration check may help. It should stay out of simple default work. Repository instructions, user opt-outs, child-agent boundaries, and existing workflow systems still come first.
 
-It returns `skip`, `check`, or `use-subagent-orchestrator`. It does not spawn agents by itself.
+It returns `skip`, `check`, or `use-subagent-orchestrator`. It does not spawn agents by itself; strong/check hook results carry a production orchestration contract that still depends on tool availability and tool policy.
 
 ### Example: explicit gate request
 

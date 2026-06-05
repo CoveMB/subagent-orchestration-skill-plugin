@@ -5,7 +5,7 @@ description: Optional execution-shape helper for deciding whether a Codex task s
 
 # Subagent Orchestrator
 
-Use this skill only when the prompt explicitly requests subagents/orchestration or when clearly complex work may benefit from parallel delegation. It can be invoked directly or reached through a quiet UserPromptSubmit hint.
+Use this skill only when the prompt explicitly requests subagents/orchestration or when clearly complex work may benefit from parallel delegation. It can be invoked directly or reached through a UserPromptSubmit orchestration contract.
 
 This is not a global bootstrap skill and not a replacement for any other process-skill, bootstrap, routing, skill-selection, or agent-management flow. Existing frameworks take priority. Use this skill only as a complement or fallback.
 

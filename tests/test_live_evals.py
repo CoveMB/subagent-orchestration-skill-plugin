@@ -348,7 +348,7 @@ def test_live_runner_contract_hook_mode_adds_harness_context_without_child_env()
 
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert result["hook_mode"] == "contract"
-    assert "Contract mode: live-eval spawn contract." in trace_text
+    assert "Eval mode: live-eval spawn trace contract." in trace_text
     assert "Why parallel:" in trace_text
     assert "Blockers checked:" in trace_text
     assert "Subagents:" in trace_text
@@ -404,7 +404,7 @@ def test_live_runner_can_inject_contract_hook_context_into_child_prompt() -> Non
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert result["inject_local_hook_context"] is True
     assert command_prompt.startswith("Subagent orchestration gate\n")
-    assert "Contract mode: live-eval spawn contract." in command_prompt
+    assert "Eval mode: live-eval spawn trace contract." in command_prompt
     assert "Live eval execution limit:" in command_prompt
     assert "Do not run external review services" in command_prompt
     assert "Use exactly one post-spawn wait call" in command_prompt
@@ -528,7 +528,7 @@ def test_live_runner_contract_keeps_single_target_debug_metadata_only() -> None:
     for command_prompt in command_prompts:
         assert "Result: single-thread-likely" in command_prompt
         assert "Non-spawn live eval case:" in command_prompt
-        assert "Contract mode: live-eval spawn contract." not in command_prompt
+        assert "Eval mode: live-eval spawn trace contract." not in command_prompt
         assert "agent_type: so_mapper" not in command_prompt
         assert "agent_type: so_tester" not in command_prompt
         assert "agent_type: so_reviewer" not in command_prompt

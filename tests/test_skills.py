@@ -33,7 +33,9 @@ DECISION_MAPPING_REQUIRED_TERMS = [
     "load `subagent-orchestrator`",
     "do not load orchestration or spawn agents",
     "do not recursively orchestrate unless the parent explicitly provided bounded permission",
-    "does not spawn agents by itself or inject binding execution instructions",
+    "does not spawn agents by itself",
+    "production orchestration contract",
+    "state the blocker",
     "chooses only `single-thread`, `sequential-plan`, or `parallel-subagents`",
 ]
 DECISION_MAPPING_TABLE_REQUIRED_TERMS = [
@@ -191,7 +193,8 @@ def test_plugin_manifest_explains_bounded_write_capability() -> None:
     assert "read-only-first" in long_description
     assert "write-capable roles are bounded" in long_description
     assert "explicitly appropriate" in long_description
-    assert "metadata plus non-binding hints" in long_description
+    assert "production orchestration contract" in long_description
+    assert "tool policy" in long_description
     assert "not a global bootstrap" in long_description
 
 
