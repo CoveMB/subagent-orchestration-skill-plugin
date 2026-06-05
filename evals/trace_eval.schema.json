@@ -102,6 +102,9 @@
               "required_pre_spawn_text": {
                 "type": "boolean"
               },
+              "required_spawn_prompt_text": {
+                "type": "boolean"
+              },
               "required_final_text": {
                 "type": "boolean"
               }

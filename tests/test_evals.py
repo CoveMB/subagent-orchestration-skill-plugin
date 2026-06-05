@@ -39,6 +39,7 @@ ALLOWED_PROMPT_KEYS = REQUIRED_PROMPT_KEYS | {
     "forbidden_tool_names",
     "requires_wait",
     "required_pre_spawn_text_terms",
+    "required_spawn_prompt_text_terms",
     "required_final_text_terms",
 }
 
@@ -109,7 +110,7 @@ def spawn_boundary_event() -> dict[str, object]:
         "Why parallel:\n"
         "- independent track 1: map targeted eval work and return evidence\n"
         "- independent track 2: identify targeted verification and return commands\n"
-        "Blockers checked: opt-out, child-agent recursion, strict sequence, write conflict, dirty repo/isolation, external side effects, privacy/tool limits.\n"
+        "Blockers checked: explicit user opt-out, child-agent recursion, strict sequential dependencies, conflicting writes, workspace-write dirty-state isolation, external side effects, privacy/tool limits, unbounded broad agent tasks.\nRead-only agents must report whether findings depend on uncommitted changes.\n"
         "Subagents:\n"
         "- so_mapper\n"
         "  mode: read-only\n"
@@ -119,7 +120,31 @@ def spawn_boundary_event() -> dict[str, object]:
     )
 
 
+def spawn_prompt(agent_type: str) -> str:
+    return (
+        f"agent_type: {agent_type}\n"
+        "mode: read-only\n"
+        "scope: targeted eval work\n"
+        "expected output: evidence, uncertainty, and report whether findings depend on uncommitted changes\n"
+        "constraints: no recursive fan-out"
+    )
+
+
 def spawn_event(agent_type: str = "so_mapper") -> dict[str, object]:
+    return {
+        "type": "item.started",
+        "item": {
+            "type": "function_call",
+            "name": "spawn_agent",
+            "arguments": {
+                "agent_type": agent_type,
+                "message": spawn_prompt(agent_type),
+            },
+        },
+    }
+
+
+def bare_spawn_event(agent_type: str = "so_mapper") -> dict[str, object]:
     return {
         "type": "item.started",
         "item": {
@@ -147,7 +172,7 @@ def collab_spawn_event(agent_type: str = "so_mapper") -> dict[str, object]:
             "id": "item_spawn",
             "type": "collab_tool_call",
             "tool": "spawn_agent",
-            "prompt": f"agent_type: {agent_type}\nmode: read-only\nscope: targeted eval work",
+            "prompt": spawn_prompt(agent_type),
         },
     }
 
@@ -375,9 +400,112 @@ def test_parallel_eval_cases_define_trace_contracts() -> None:
         assert isinstance(case.get("expected_spawn_agents"), list) and case["expected_spawn_agents"], case
         assert case.get("requires_wait") is True, case
         assert case.get("forbid_duplicate_spawn_agents") is True, case
-        assert "required_pre_spawn_text_terms" not in case, case
+        if "required_pre_spawn_text_terms" in case:
+            assert "workspace-write dirty-state isolation" in case["required_pre_spawn_text_terms"], case
+            assert "report whether findings depend on uncommitted changes" in case["required_pre_spawn_text_terms"], case
         assert isinstance(case.get("required_final_text_terms"), list), case
         assert "Synthesis:" in case["required_final_text_terms"], case
+
+
+def test_eval_prompt_set_covers_dirty_repo_read_only_and_write_isolation_boundaries() -> None:
+    cases = {case["id"]: case for case in load_jsonl(PROMPTS)}
+    dirty_read_only_case = cases["dirty-repo-read-only-branch-review"]
+    dirty_write_case = cases["dirty-repo-write-agent-unclear-isolation"]
+
+    assert dirty_read_only_case["expected_decision"] == "use-subagent-orchestrator"
+    assert dirty_read_only_case["should_spawn"] is True
+    assert dirty_read_only_case["must_not_spawn"] is False
+    assert dirty_read_only_case["expected_spawn_agents"] == ["so_mapper", "so_reviewer", "so_tester"]
+    assert {"so_implementer", "so_reproducer"} <= set(dirty_read_only_case["forbidden_spawn_agents"])
+    assert "report whether findings depend on uncommitted changes" in dirty_read_only_case["required_pre_spawn_text_terms"]
+
+    assert dirty_write_case["expected_decision"] == "use-subagent-orchestrator"
+    assert dirty_write_case["should_spawn"] is True
+    assert dirty_write_case["must_not_spawn"] is False
+    assert dirty_write_case["expected_spawn_agents"] == ["so_mapper", "so_reviewer"]
+    assert {"so_implementer", "so_reproducer"} <= set(dirty_write_case["forbidden_spawn_agents"])
+    assert "workspace-write dirty-state isolation" in dirty_write_case["required_pre_spawn_text_terms"]
+
+
+def test_eval_prompt_set_covers_conditional_and_review_boundaries() -> None:
+    cases = {case["id"]: case for case in load_jsonl(PROMPTS)}
+
+    conditional_only_ids = [
+        "conditional-use-subagents-if-helpful",
+        "conditional-agents-where-appropriate",
+        "conditional-orchestrate-as-needed",
+        "conditional-spawn-only-if-useful",
+        "conditional-branch-review",
+    ]
+    for case_id in conditional_only_ids:
+        case = cases[case_id]
+        assert case["expected_decision"] == "orchestration-check"
+        assert case["should_spawn"] is False
+        assert case["must_not_spawn"] is True
+
+    conditional_broad_ids = [
+        "conditional-helpful-api-worker-database-ci",
+        "conditional-appropriate-security-surface-audit",
+    ]
+    for case_id in conditional_broad_ids:
+        case = cases[case_id]
+        assert case["expected_decision"] == "use-subagent-orchestrator"
+        assert case["should_spawn"] is True
+        assert case["must_not_spawn"] is False
+        assert "so_implementer" in case.get("forbidden_spawn_agents", [])
+
+    opt_out_case = cases["hard-opt-out-even-if-helpful-review"]
+    assert opt_out_case["expected_decision"] == "orchestration-opt-out"
+    assert opt_out_case["should_spawn"] is False
+    assert opt_out_case["must_not_spawn"] is True
+
+    pr_diff_case = cases["pr-diff-security-test-review"]
+    assert pr_diff_case["expected_decision"] == "use-subagent-orchestrator"
+    assert pr_diff_case["expected_spawn_agents"] == ["so_mapper", "so_reviewer", "so_tester"]
+    assert "so_implementer" in pr_diff_case["forbidden_spawn_agents"]
+
+
+def test_fragile_spawn_cases_require_case_specific_spawn_prompt_terms() -> None:
+    cases = {case["id"]: case for case in load_jsonl(PROMPTS)}
+    expected_terms_by_case_id = {
+        "conditional-helpful-api-worker-database-ci": [
+            "api",
+            "worker",
+            "database",
+            "flaky ci",
+        ],
+        "conditional-appropriate-security-surface-audit": [
+            "authentication",
+            "api routes",
+            "database access",
+            "security",
+        ],
+        "pr-diff-security-test-review": [
+            "pr diff",
+            "authentication",
+            "api route",
+            "missing tests",
+        ],
+        "dirty-repo-read-only-branch-review": [
+            "dirty branch",
+            "uncommitted changes",
+            "read-only",
+            "missing tests",
+        ],
+        "dirty-repo-write-agent-unclear-isolation": [
+            "dirty-state",
+            "write-isolation",
+            "authentication",
+            "api route",
+        ],
+    }
+
+    for case_id, expected_terms in expected_terms_by_case_id.items():
+        case = cases[case_id]
+        required_terms = case.get("required_spawn_prompt_text_terms")
+        assert isinstance(required_terms, list) and required_terms, case
+        for expected_term in expected_terms:
+            assert expected_term in required_terms, case
 
 
 def test_eval_prompt_set_matches_hook_classifier() -> None:
@@ -474,6 +602,85 @@ def test_eval_grader_scores_live_collab_tool_trace_shape() -> None:
     assert result["overall_pass"] is True
     assert result["cases"][0]["spawn_count"] == 1
     assert result["cases"][0]["spawned_agents"] == ["so_mapper"]
+
+
+def test_eval_grader_fails_spawn_without_required_prompt_text() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        prompts = root / "prompts.jsonl"
+        traces = root / "traces"
+        traces.mkdir()
+        write_jsonl(
+            prompts,
+            [
+                {
+                    "id": "parallel-debug",
+                    "prompt": "Debug a flaky regression across API and web tests.",
+                    "expected_decision": "use-subagent-orchestrator",
+                    "should_spawn": True,
+                    "must_not_spawn": False,
+                    "expected_spawn_agents": ["so_mapper"],
+                    "requires_wait": True,
+                    "required_final_text_terms": ["Synthesis:", "Tests/verification:"],
+                    "rubric_ids": ["decision", "spawn", "spawn_agents", "wait"],
+                },
+            ],
+        )
+        write_jsonl(
+            traces / "parallel-debug.jsonl",
+            [
+                spawn_boundary_event(),
+                bare_spawn_event("so_mapper"),
+                wait_event(),
+                message_event("Synthesis:\nTests/verification: checked prompt text enforcement."),
+            ],
+        )
+
+        result = run_grader(prompts, traces)
+
+    assert result["overall_pass"] is False
+    assert result["cases"][0]["checks"]["required_spawn_prompt_text"] is False
+
+
+def test_eval_grader_accepts_custom_required_spawn_prompt_text_terms() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        prompts = root / "prompts.jsonl"
+        traces = root / "traces"
+        traces.mkdir()
+        write_jsonl(
+            prompts,
+            [
+                {
+                    "id": "parallel-debug",
+                    "prompt": "Debug a flaky regression across API and web tests.",
+                    "expected_decision": "use-subagent-orchestrator",
+                    "should_spawn": True,
+                    "must_not_spawn": False,
+                    "expected_spawn_agents": ["so_mapper"],
+                    "requires_wait": True,
+                    "required_spawn_prompt_text_terms": ["custom-required-marker"],
+                    "required_final_text_terms": ["Synthesis:", "Tests/verification:"],
+                    "rubric_ids": ["decision", "spawn", "spawn_agents", "wait"],
+                },
+            ],
+        )
+        custom_spawn = spawn_event("so_mapper")
+        custom_spawn["item"]["arguments"]["message"] += "\ncustom-required-marker"
+        write_jsonl(
+            traces / "parallel-debug.jsonl",
+            [
+                spawn_boundary_event(),
+                custom_spawn,
+                wait_event(),
+                message_event("Synthesis:\nTests/verification: checked prompt text override."),
+            ],
+        )
+
+        result = run_grader(prompts, traces)
+
+    assert result["overall_pass"] is True
+    assert result["cases"][0]["checks"]["required_spawn_prompt_text"] is True
 
 
 def test_eval_grader_counts_live_collab_start_and_completion_once() -> None:
@@ -1218,6 +1425,7 @@ def test_trace_eval_schema_describes_grader_output() -> None:
         "spawn_budget",
         "wait_required",
         "required_pre_spawn_text",
+        "required_spawn_prompt_text",
         "required_final_text",
     ]:
         assert check_properties[check_name]["type"] == "boolean"
@@ -1287,7 +1495,10 @@ def test_eval_grader_does_not_flag_forbidden_command_mentioned_in_spawn_prompt()
                 "item": {
                     "type": "collab_tool_call",
                     "tool": "spawn_agent",
-                    "prompt": "agent_type: so_reviewer\nDo not run gh pr comment or other external side-effect commands.",
+                    "prompt": (
+                        spawn_prompt("so_reviewer")
+                        + "\nDo not run gh pr comment or other external side-effect commands."
+                    ),
                 },
             },
         ],

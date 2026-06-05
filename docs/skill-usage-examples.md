@@ -100,17 +100,17 @@ Phase 1 read-only subagents:
 Why parallel:
 - independent track 1: map auth flow files and likely failure boundaries
 - independent track 2: identify targeted tests and coverage gaps
-Blockers checked: opt-out, child-agent recursion, strict sequence, write conflict, dirty repo/isolation, external side effects, privacy/tool limits.
+Blockers checked: explicit user opt-out, child-agent recursion, strict sequential dependencies, conflicting writes, workspace-write dirty-state isolation, external side effects, privacy/tool limits, unbounded broad agent tasks.
 Subagents:
 - name: so_mapper
   mode: read-only
   scope: map auth flow files, call sites, and likely failure boundaries
-  expected output: file paths, execution path facts, uncertainty
+  expected output: file paths, execution path facts, uncertainty, whether findings depend on uncommitted changes
   constraints: no recursive fan-out
 - name: so_tester
   mode: read-only
   scope: identify targeted tests and reproduction commands
-  expected output: commands, expected failures, coverage gaps
+  expected output: commands, expected failures, coverage gaps, whether findings depend on uncommitted changes
   constraints: no recursive fan-out
 ```
 
@@ -142,22 +142,22 @@ Expected result:
 Why parallel:
 - independent track 1: map changed files, execution paths, and dependencies
 - independent track 2: review correctness, security, regressions, and missing-test risk
-Blockers checked: opt-out, child-agent recursion, strict sequence, write conflict, dirty repo/isolation, external side effects, privacy/tool limits.
+Blockers checked: explicit user opt-out, child-agent recursion, strict sequential dependencies, conflicting writes, workspace-write dirty-state isolation, external side effects, privacy/tool limits, unbounded broad agent tasks.
 Subagents:
 - name: so_mapper
   mode: read-only
   scope: map changed files, execution paths, and dependencies
-  expected output: touched surfaces, call sites, risk areas
+  expected output: touched surfaces, call sites, risk areas, whether findings depend on uncommitted changes
   constraints: no recursive fan-out
 - name: so_reviewer
   mode: read-only
   scope: inspect correctness, security, regressions, and maintainability risks
-  expected output: material findings only, with file paths and evidence
+  expected output: material findings only, with file paths, evidence, and whether findings depend on uncommitted changes
   constraints: no recursive fan-out
 - name: so_tester
   mode: read-only
   scope: identify relevant tests and missing coverage
-  expected output: test commands, expected coverage, gaps
+  expected output: test commands, expected coverage, gaps, whether findings depend on uncommitted changes
   constraints: no recursive fan-out
 ```
 
@@ -169,7 +169,8 @@ The final response should lead with material findings. If there are no material 
 - Use `subagent-orchestrator` when the task already clearly needs execution-shape selection.
 - Stay single-threaded for tiny edits, simple questions, explicit opt-outs, child-agent tasks, and strictly linear work.
 - Prefer read-only agents first for broad investigation, review, or testing questions.
+- Do not treat dirty repo state as a blocker for bounded read-only agents; tell them to report whether findings depend on uncommitted changes.
 - Treat the plugin as read-only-first: default/simple prompts do not write, spawn, or activate a global bootstrap automatically.
-- Use bounded workspace-write roles only when scoped: `so_reproducer` may collect scratch/log work after narrowing, while `so_implementer` needs explicit task scope or prior synthesis before code edits.
+- Use bounded workspace-write roles only when scoped and isolated: `so_reproducer` may collect scratch/log work after narrowing, while `so_implementer` needs explicit task scope or prior synthesis before code edits. Dirty repo state blocks workspace-write agents when isolation is unclear.
 - Keep destructive/external actions under host/user/approval rules.
 - Keep host repository rules, user instructions, safety, privacy, tests, and approval requirements above plugin guidance.

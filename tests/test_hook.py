@@ -83,9 +83,13 @@ FALSE_POSITIVE_CASES = [
     ("Compare package and workspace names in package.json.", "single-thread-default"),
     ("Debug this one failing cache and storage test.", "single-thread-likely"),
     ("Debug auth and search for root cause.", "orchestration-check"),
+    ("Explain what GraphQL and REST are.", "single-thread-likely"),
+    ("Compare GraphQL and REST.", "single-thread-default"),
+    ("Compare end-to-end and integration tests.", "single-thread-default"),
+    ("What are the trade-offs between GraphQL and REST?", "single-thread-likely"),
 ]
 HIGH_VALUE_EDGE_CASES = [
-    ("Audit src/auth.ts for vulnerabilities and missing tests.", "orchestration-check"),
+    ("Audit src/auth.ts for vulnerabilities and missing tests.", "use-subagent-orchestrator"),
     (
         "Audit authentication, API routes, and database access for security regressions and missing tests.",
         "use-subagent-orchestrator",
@@ -1024,20 +1028,34 @@ def test_classifier_respects_opt_out_variants() -> None:
         "Don't orchestrate. Debug the flaky auth regression.",
         "Don't use orchestration. Audit security risk.",
         "Dont use subagents. Review this patch.",
+        "Do not use subagents.",
         "Do not use orchestration. Audit security risk.",
         "Never use subagents. Review this patch.",
         "Never use orchestration. Audit security risk.",
+        "Never spawn agents.",
         "Never orchestrate. Debug this failure.",
         "Without orchestration, review this patch.",
+        "Without orchestration even if helpful, review this branch for security and architecture.",
         "Without parallel agents, investigate this failure.",
+        "Without subagents even if helpful, investigate this failure across API and web tests.",
         "No parallel agents, debug this failure.",
+        "No parallel agents even if helpful. Debug this failure.",
+        "No subagents even if helpful. Audit authentication, API routes, and database access.",
+        "No orchestration even if useful. Review this branch for security.",
+        "No orchestration. I want one agent only.",
         "Do not spawn agents. Review this patch.",
+        "Do not use subagents. Use orchestration as needed for this audit.",
         "Never spawn agents. Review this patch for security risk.",
+        "Do not use subagents even if helpful.",
+        "Do not use subagents even if helpful. Audit authentication, API routes, and database access.",
         "No more agents. Audit this patch.",
+        "No more agents even if helpful. Audit authentication, API routes, and database access.",
         "Without spawning agents, investigate this failure.",
         "Work linearly through this flaky failure.",
+        "Work linearly only.",
         "Use linear execution for this audit.",
         "Single-thread only for this review.",
+        "Single-thread only.",
     ]
     for prompt in cases:
         context = run(prompt)
@@ -1049,16 +1067,57 @@ def test_classifier_respects_opt_out_variants() -> None:
 def test_classifier_preserves_conditional_orchestration() -> None:
     assert_prompt_decisions([
         ("Review the branch. No subagent orchestration unless useful.", "orchestration-check"),
+        ("Use subagents if helpful.", "orchestration-check"),
         ("Use subagents only if helpful for the implementation review.", "orchestration-check"),
+        ("Use agents where appropriate.", "orchestration-check"),
         ("Run parallel agents only if valuable for the audit.", "orchestration-check"),
         ("Orchestration only if needed for this refactor.", "orchestration-check"),
         ("Use subagents if helpful; otherwise work linearly.", "orchestration-check"),
+        ("Do not use subagents unless useful.", "orchestration-check"),
         ("Use agents where appropriate for this review.", "orchestration-check"),
+        ("No subagents unless useful.", "orchestration-check"),
         ("Delegate only if it reduces risk.", "orchestration-check"),
         ("Orchestrate as needed, but keep it lightweight.", "orchestration-check"),
+        ("Spawn agents only if useful.", "orchestration-check"),
+        ("Use parallel agents where appropriate.", "orchestration-check"),
+        ("Spawn parallel agents only if worthwhile.", "orchestration-check"),
         ("Use parallel agents when worthwhile.", "orchestration-check"),
+        ("Use orchestration as needed.", "orchestration-check"),
         ("Only orchestrate if it adds value.", "orchestration-check"),
         ("Spawn read-only agents where warranted.", "orchestration-check"),
+    ])
+
+
+def test_classifier_allows_conditional_permission_with_strong_complexity() -> None:
+    assert_prompt_decisions([
+        (
+            "No subagents unless useful; review auth, API, database, and tests for regressions.",
+            "use-subagent-orchestrator",
+        ),
+        (
+            "Do not use subagents unless useful; review auth, API, database, and tests for regressions.",
+            "use-subagent-orchestrator",
+        ),
+        (
+            "Use agents if helpful; investigate flaky CI across frontend, backend, and worker services.",
+            "use-subagent-orchestrator",
+        ),
+        (
+            "Use orchestration where appropriate; audit security, architecture, correctness, and missing tests.",
+            "use-subagent-orchestrator",
+        ),
+        (
+            "Use subagents if helpful; investigate flaky CI failures across API, worker, and database layers.",
+            "use-subagent-orchestrator",
+        ),
+        (
+            "Use agents where appropriate; audit authentication, API routes, and database access for security regressions and missing tests.",
+            "use-subagent-orchestrator",
+        ),
+        (
+            "No subagent orchestration unless useful; review this branch for security, architecture, correctness, and missing tests across modules.",
+            "use-subagent-orchestrator",
+        ),
     ])
 
 
@@ -1138,6 +1197,104 @@ def test_classifier_preserves_broad_debugging_orchestration() -> None:
     ])
 
 
+def test_classifier_detects_parallelizable_uncertainty_runtime_and_release_signals() -> None:
+    assert_context_includes_labels(
+        "Triage possible root causes for intermittent timeouts across API, worker, and database.",
+        "use-subagent-orchestrator",
+        ["multi-surface scope", "parallelizable uncertainty", "runtime/performance/concurrency"],
+    )
+    assert_context_includes_labels(
+        "Review this migration for schema compatibility, rollback risk, and missing tests.",
+        "use-subagent-orchestrator",
+        ["release/data risk", "review/audit", "tests/verification"],
+    )
+    assert_context_includes_labels(
+        "Investigate a possible race condition affecting frontend, backend, and job processing.",
+        "use-subagent-orchestrator",
+        ["debugging/root-cause", "multi-surface scope", "runtime/performance/concurrency"],
+    )
+
+
+def test_classifier_detects_cross_cutting_integration_work() -> None:
+    assert_context_includes_labels(
+        "Review cross-cutting integration between client and server contract tests.",
+        "use-subagent-orchestrator",
+        ["cross-cutting integration", "multi-surface scope", "review/audit", "tests/verification"],
+    )
+
+
+def test_classifier_detects_observability_surface_audits() -> None:
+    assert_context_includes_labels(
+        "Audit observability, logging, and telemetry gaps across the service.",
+        "use-subagent-orchestrator",
+        ["multi-surface scope", "review/audit"],
+    )
+
+
+def test_classifier_escalates_high_risk_single_target_review_with_verification() -> None:
+    assert_context_includes_labels(
+        "Audit src/auth.ts for vulnerabilities and missing tests.",
+        "use-subagent-orchestrator",
+        ["high-risk single target", "review/audit", "tests/verification"],
+    )
+    assert_context_includes_labels(
+        "Review the payment webhook handler for security regressions and missing tests.",
+        "use-subagent-orchestrator",
+        ["high-risk single target", "review/audit", "tests/verification"],
+    )
+    assert_context_includes_labels(
+        "Audit the permissions middleware for authorization bugs and coverage gaps.",
+        "use-subagent-orchestrator",
+        ["high-risk single target", "review/audit", "tests/verification"],
+    )
+    assert_context_includes_labels(
+        "Review the crypto signing module for vulnerabilities and verification gaps.",
+        "use-subagent-orchestrator",
+        ["high-risk single target", "review/audit", "tests/verification"],
+    )
+
+
+def test_classifier_does_not_escalate_low_risk_single_target_tasks() -> None:
+    assert_prompt_decisions([
+        ("Rename src/auth.ts.", "single-thread-likely"),
+        ("Explain src/auth.ts.", "single-thread-likely"),
+        ("Review src/auth.ts for readability.", "single-thread-default"),
+        ("Review this one import for correctness and missing tests.", "orchestration-check"),
+        ("Add one missing import to the payment webhook handler.", "single-thread-default"),
+        ("Review the crypto signing module for performance.", "orchestration-check"),
+        ("Audit the auth module for CI failures.", "orchestration-check"),
+    ])
+
+
+def test_classifier_keeps_single_keyword_data_and_surface_tasks_non_orchestrated() -> None:
+    assert_prompt_decisions([
+        ("Rename this migration file.", "single-thread-likely"),
+        ("Fix this one typo in the logging message.", "single-thread-likely"),
+        ("Explain what a database schema is.", "single-thread-likely"),
+        ("Change one REST route name.", "single-thread-default"),
+    ])
+
+
+def test_classifier_keeps_compound_tiny_edits_non_orchestrated() -> None:
+    assert_prompt_decisions([
+        ("Rename this migration file and fix one typo in the logging message.", "single-thread-likely"),
+        ("Fix one typo in GraphQL and REST docs.", "single-thread-likely"),
+        ("Change one GraphQL and REST route name.", "single-thread-likely"),
+        ("Change GraphQL and REST route names.", "orchestration-check"),
+        ("Rename API and web route names.", "use-subagent-orchestrator"),
+    ])
+
+
+def test_classifier_preserves_multi_surface_audits_with_single_container_wording() -> None:
+    assert_prompt_decisions([
+        ("Audit observability, logging, and telemetry gaps in the service.", "use-subagent-orchestrator"),
+        (
+            "Review logging, telemetry, and observability in the service for missing tests.",
+            "use-subagent-orchestrator",
+        ),
+    ])
+
+
 def test_classifier_decision_matrix_covers_execution_shapes() -> None:
     assert_prompt_decisions(DECISION_MATRIX_CASES)
 
@@ -1149,7 +1306,7 @@ def test_hook_emits_non_binding_action_hint_for_strong_orchestration() -> None:
         [
             "invoke the subagent-orchestrator skill",
             "compile bounded read-only subagent prompts",
-            "spawn only after a compact why-parallel proof passes",
+            "spawn the smallest useful read-only roster after a compact why-parallel proof",
             "wait, then synthesize before edits",
         ],
     )
@@ -1161,8 +1318,8 @@ def test_hook_emits_checklist_hint_for_conditional_orchestration() -> None:
         "orchestration-check",
         [
             "run the orchestration checklist",
-            "spawn only if at least two independent tracks exist",
-            "blockers are clear",
+            "spawn only if at least two independent read-only tracks can return independently useful outputs",
+            "no concrete blocker exists",
         ],
     )
 
@@ -1275,7 +1432,7 @@ def test_hook_ignores_live_eval_contract_mode_environment() -> None:
         "Subagent orchestration gate",
         "Result: use-subagent-orchestrator",
         "Reason: Strong orchestration signals detected (architecture/refactor, debugging/root-cause, tests/verification).",
-        "Action: Non-binding hint: invoke the subagent-orchestrator skill, compile bounded read-only subagent prompts, spawn only after a compact why-parallel proof passes, wait, then synthesize before edits.",
+        "Action: Non-binding hint: invoke the subagent-orchestrator skill, compile bounded read-only subagent prompts, spawn the smallest useful read-only roster after a compact why-parallel proof, wait, then synthesize before edits.",
     ]
     assert "Contract mode: live-eval spawn contract." not in context
 

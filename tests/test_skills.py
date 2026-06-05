@@ -355,10 +355,42 @@ def test_orchestrator_skill_defines_spawn_boundaries_and_synthesis() -> None:
             "independent track 2:",
             "blockers checked:",
             "complexity alone is not enough",
-            "if the proof fails, choose `sequential-plan` or `single-thread`",
+            "if at least two bounded read-only tracks can return independently useful outputs",
+            "spawn the smallest useful read-only roster unless a concrete blocker exists",
         ],
         ORCHESTRATOR_SKILL,
     )
+
+
+def test_orchestrator_skill_scopes_dirty_state_by_agent_mode() -> None:
+    orchestrator_text = ORCHESTRATOR_SKILL.read_text(encoding="utf-8").lower()
+    using_text = USING_ORCHESTRATOR_SKILL.read_text(encoding="utf-8").lower()
+    combined_text = "\n".join([orchestrator_text, using_text])
+
+    assert_text_contains_all(
+        orchestrator_text,
+        [
+            "do not treat dirty repo state as a blocker for bounded read-only mapper, reviewer, tester, docs, or research agents",
+            "report whether findings depend on uncommitted changes",
+            "treat dirty repo state as a blocker only for workspace-write agents when isolation is unclear",
+            "workspace-write dirty-state isolation",
+        ],
+        ORCHESTRATOR_SKILL,
+    )
+    assert_text_contains_all(
+        combined_text,
+        [
+            "explicit user opt-out",
+            "child-agent recursion",
+            "strict sequential",
+            "external side effects",
+            "privacy/tool",
+            "conflicting writes",
+            "unbounded broad agent tasks",
+        ],
+        "orchestrator skill dirty-state boundary",
+    )
+    assert "the repo state is dirty and isolation is unclear" not in orchestrator_text
 
 
 def test_skill_forward_scenarios_have_actionable_guidance() -> None:

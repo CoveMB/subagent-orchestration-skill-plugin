@@ -32,6 +32,7 @@ ALLOWED_CASE_KEYS = set(REQUIRED_CASE_KEYS) | {
     "forbidden_tool_names",
     "requires_wait",
     "required_pre_spawn_text_terms",
+    "required_spawn_prompt_text_terms",
     "required_final_text_terms",
 }
 BOOL_CASE_KEYS = ("should_spawn", "must_not_spawn", "requires_wait", "forbid_duplicate_spawn_agents")
@@ -43,6 +44,7 @@ LIST_CASE_KEYS = (
     "expected_spawn_agents",
     "forbidden_tool_names",
     "required_pre_spawn_text_terms",
+    "required_spawn_prompt_text_terms",
     "required_final_text_terms",
 )
 DEFAULT_FORBIDDEN_COMMAND_TERMS = (
@@ -65,6 +67,15 @@ DEFAULT_REQUIRED_PRE_SPAWN_TEXT_TERMS = (
     "scope:",
     "expected output:",
     "no recursive fan-out",
+    "report whether findings depend on uncommitted changes",
+)
+DEFAULT_REQUIRED_SPAWN_PROMPT_TEXT_TERMS = (
+    "agent_type:",
+    "mode:",
+    "scope:",
+    "expected output:",
+    "constraints:",
+    "report whether findings depend on uncommitted changes",
 )
 TOOL_NAME_KEYS = ("name", "tool_name", "recipient_name")
 TOOL_ALIAS_NAMES = {
@@ -388,6 +399,28 @@ def spawned_agent_names_from_event(event: dict[str, Any]) -> set[str]:
         for key in SPAWN_PROMPT_KEYS:
             agent_names.update(custom_agent_names_from_agent_type_labels(arguments.get(key)))
     return agent_names
+
+
+def spawn_prompt_text_from_event(event: dict[str, Any]) -> str:
+    prompt_parts: list[str] = []
+    for arguments in tool_argument_objects(event):
+        for key in SPAWN_PROMPT_KEYS:
+            prompt_parts.extend(text_fragments(arguments.get(key)))
+    return "\n".join(prompt_parts)
+
+
+def spawn_prompt_texts(events: list[dict[str, Any]]) -> list[str]:
+    return [
+        spawn_prompt_text_from_event(events[index])
+        for index in tool_call_indices(events, "spawn_agent")
+    ]
+
+
+def all_spawn_prompts_contain_terms(events: list[dict[str, Any]], terms: tuple[str, ...]) -> bool:
+    if not terms:
+        return True
+    texts = spawn_prompt_texts(events)
+    return bool(texts) and all(contains_all_terms(text, terms) for text in texts)
 
 
 def spawned_agent_names(events: list[dict[str, Any]]) -> set[str]:
@@ -758,6 +791,15 @@ def case_required_pre_spawn_text_terms(case: dict[str, Any]) -> tuple[str, ...]:
     return ()
 
 
+def case_required_spawn_prompt_text_terms(case: dict[str, Any]) -> tuple[str, ...]:
+    terms = expected_string_list(case, "required_spawn_prompt_text_terms")
+    if terms:
+        return terms
+    if expected_bool(case, "should_spawn"):
+        return DEFAULT_REQUIRED_SPAWN_PROMPT_TEXT_TERMS
+    return ()
+
+
 def score_case(case: dict[str, Any], trace_path: Path, options: GradingOptions) -> dict[str, Any]:
     if not trace_path.exists():
         return {
@@ -774,6 +816,7 @@ def score_case(case: dict[str, Any], trace_path: Path, options: GradingOptions) 
     forbidden_spawn_agents = expected_string_list(case, "forbidden_spawn_agents")
     forbidden_tool_names = tuple(term.lower() for term in expected_string_list(case, "forbidden_tool_names"))
     required_pre_spawn_text_terms = case_required_pre_spawn_text_terms(case)
+    required_spawn_prompt_text_terms = case_required_spawn_prompt_text_terms(case)
     required_final_text_terms = expected_string_list(case, "required_final_text_terms")
     max_commands = expected_int(case, "max_command_count")
     max_spawns = expected_int(case, "max_spawn_count")
@@ -799,6 +842,7 @@ def score_case(case: dict[str, Any], trace_path: Path, options: GradingOptions) 
             message_text_before_first_tool(events, "spawn_agent"),
             required_pre_spawn_text_terms,
         ),
+        "required_spawn_prompt_text": all_spawn_prompts_contain_terms(events, required_spawn_prompt_text_terms),
         "required_final_text": not required_final_text_terms or contains_all_terms(message_text(events), required_final_text_terms),
     }
     return {

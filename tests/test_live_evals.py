@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_RUNNER = ROOT / "scripts" / "run_live_skill_evals.py"
+SINGLE_TARGET_DEBUG_CASE_IDS = ("single-file-failing-test-debug", "single-assertion-debug")
 
 
 def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -43,6 +44,13 @@ def write_fake_codex(path: Path) -> None:
         "prompt = sys.argv[-1]",
         "decision = 'single-thread-likely' if 'repository' in prompt else 'single-thread-default'",
         *message_event_lines("f'Subagent orchestration gate\\nResult: {decision}\\nReason: Fake live trace.'"),
+    ])
+
+
+def write_single_thread_likely_fake_codex(path: Path) -> None:
+    write_executable_python(path, [
+        "import json",
+        *message_event_lines("'Subagent orchestration gate\\nResult: single-thread-likely\\nReason: Fake narrow debug trace.'"),
     ])
 
 
@@ -107,6 +115,10 @@ def run_live_runner(arguments: list[str], cwd: Path) -> subprocess.CompletedProc
     )
 
 
+def case_filter_arguments(case_ids: tuple[str, ...]) -> list[str]:
+    return [argument for case_id in case_ids for argument in ("--case", case_id)]
+
+
 def prompt_rows() -> list[dict[str, object]]:
     return [
         {
@@ -121,6 +133,27 @@ def prompt_rows() -> list[dict[str, object]]:
             "id": "default-changelog-note",
             "prompt": "Draft a short note for the changelog.",
             "expected_decision": "single-thread-default",
+            "should_spawn": False,
+            "must_not_spawn": True,
+            "rubric_ids": ["decision", "no_spawn"],
+        },
+    ]
+
+
+def single_target_debug_prompt_rows() -> list[dict[str, object]]:
+    return [
+        {
+            "id": SINGLE_TARGET_DEBUG_CASE_IDS[0],
+            "prompt": "Fix the failing test in tests/test_auth.py only.",
+            "expected_decision": "single-thread-likely",
+            "should_spawn": False,
+            "must_not_spawn": True,
+            "rubric_ids": ["decision", "no_spawn"],
+        },
+        {
+            "id": SINGLE_TARGET_DEBUG_CASE_IDS[1],
+            "prompt": "Debug this one failing assertion in src/auth.ts.",
+            "expected_decision": "single-thread-likely",
             "should_spawn": False,
             "must_not_spawn": True,
             "rubric_ids": ["decision", "no_spawn"],
@@ -376,6 +409,7 @@ def test_live_runner_can_inject_contract_hook_context_into_child_prompt() -> Non
     assert "Do not run external review services" in command_prompt
     assert "Use exactly one post-spawn wait call" in command_prompt
     assert "Do not perform fallback sequential review after the wait call" in command_prompt
+    assert "report whether findings depend on uncommitted changes" in command_prompt
     assert original_prompt in command_prompt
     assert "PROMPT:Subagent orchestration gate" in trace_text
 
@@ -458,6 +492,85 @@ def test_live_runner_adds_non_spawn_contract_case_limit() -> None:
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert "Non-spawn live eval case:" in command_prompt
     assert "Do not perform the underlying branch review, audit, debug, or documentation sweep." in command_prompt
+
+
+def test_live_runner_contract_keeps_single_target_debug_metadata_only() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        prompts = root / "prompts.jsonl"
+        traces = root / "traces"
+        fake_codex = root / "fake_codex.py"
+        write_jsonl(prompts, single_target_debug_prompt_rows())
+        write_prompt_reporting_fake_codex(fake_codex)
+
+        proc = run_live_runner(
+            [
+                "--prompts",
+                str(prompts),
+                "--traces",
+                str(traces),
+                *case_filter_arguments(SINGLE_TARGET_DEBUG_CASE_IDS),
+                "--codex-bin",
+                str(fake_codex),
+                "--hook-mode",
+                "contract",
+                "--inject-local-hook-context",
+                "--no-grade",
+            ],
+            ROOT,
+        )
+
+        result = json.loads(proc.stdout)
+        command_prompts = [run["command"][-1] for run in result["runs"]]
+
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert len(command_prompts) == 2
+    for command_prompt in command_prompts:
+        assert "Result: single-thread-likely" in command_prompt
+        assert "Non-spawn live eval case:" in command_prompt
+        assert "Contract mode: live-eval spawn contract." not in command_prompt
+        assert "agent_type: so_mapper" not in command_prompt
+        assert "agent_type: so_tester" not in command_prompt
+        assert "agent_type: so_reviewer" not in command_prompt
+
+
+def test_live_runner_grades_single_target_debug_no_spawn_cases() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        prompts = root / "prompts.jsonl"
+        traces = root / "traces"
+        fake_codex = root / "fake_codex.py"
+        write_jsonl(prompts, single_target_debug_prompt_rows())
+        write_single_thread_likely_fake_codex(fake_codex)
+
+        proc = run_live_runner(
+            [
+                "--prompts",
+                str(prompts),
+                "--traces",
+                str(traces),
+                *case_filter_arguments(SINGLE_TARGET_DEBUG_CASE_IDS),
+                "--codex-bin",
+                str(fake_codex),
+                "--hook-mode",
+                "contract",
+                "--inject-local-hook-context",
+            ],
+            ROOT,
+        )
+
+        result = json.loads(proc.stdout)
+        graded_cases = result["grade"]["cases"]
+
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert result["grade"]["overall_pass"] is True
+    assert result["summary"]["captured"] == 2
+    assert len(graded_cases) == 2
+    for graded_case in graded_cases:
+        assert graded_case["decision"] == "single-thread-likely"
+        assert graded_case["spawn_attempted"] is False
+        assert graded_case["spawn_count"] == 0
+        assert graded_case["checks"]["no_unwanted_spawn"] is True
 
 
 def test_live_runner_can_capture_without_injected_local_hook_context() -> None:

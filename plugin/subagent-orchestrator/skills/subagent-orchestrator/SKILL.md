@@ -50,7 +50,7 @@ Subagents may not:
 
 ## Authorization and boundaries
 
-When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, or unclear boundaries require it.
+When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Do not treat dirty repo state as a blocker for bounded read-only mapper, reviewer, tester, docs, or research agents. Instead, instruct read-only agents to report whether findings depend on uncommitted changes. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, workspace-write dirty-state isolation, or unclear boundaries require it.
 
 Clear boundaries are required first: role, mode, scope, expected output, and no recursive fan-out. Ask the user only when boundaries cannot be defined, the user opted out, or the action itself needs approval such as destructive or externally visible work.
 
@@ -80,7 +80,7 @@ Use this compiler when the hook result is `use-subagent-orchestrator`, when the 
 
 ### Scope primer before spawning
 
-A minimal local read-only pass is allowed before spawning. Use it only to identify the active repository rules, current branch/status when relevant, obvious files or docs to inspect, existing agent templates, and the smallest safe scope for each agent. Do not use the primer as a broad investigation substitute. If the primer shows only one useful track, a strict sequence, unclear boundaries, an opt-out, child-agent recursion, unsafe context sharing, or write conflicts, choose `sequential-plan` or `single-thread`.
+A minimal local read-only pass is allowed before spawning. Use it only to identify the active repository rules, current branch/status when relevant, obvious files or docs to inspect, existing agent templates, and the smallest safe scope for each agent. Do not use the primer as a broad investigation substitute. If the primer shows only one useful track, a strict sequence, unclear boundaries, an opt-out, child-agent recursion, unsafe context sharing, conflicting writes, or unbounded broad agent tasks, choose `sequential-plan` or `single-thread`. Treat dirty repo state as a blocker only for workspace-write agents when isolation is unclear.
 
 ### Compilation order
 
@@ -88,7 +88,7 @@ A minimal local read-only pass is allowed before spawning. Use it only to identi
 2. Extract scope: files explicitly named by the user, changed files from diff/status if available, subsystems named by the user, repository/branch/diff boundaries, unknown scope if no reliable boundary is known, non-goals, host rules, privacy/tool limits, and explicit read/write boundaries.
 3. Identify independent tracks: require at least two independent tracks that can return useful evidence without waiting on each other, such as code-path mapping, risk/security/correctness review, test discovery/verification, reproduction/log collection, docs/API/version verification, or design alternatives.
 4. Select the smallest read-only roster: choose the smallest useful read-only roster, start with two agents when enough, and add a third only when it covers a distinct risk or evidence gap. Do not include `so_implementer` before synthesis.
-5. Emit bounded prompts: one self-contained prompt per agent with context, scope, non-goals, task, constraints, structured expected output, confidence, and evidence versus inference requirements.
+5. Emit bounded prompts: one self-contained prompt per agent with context, scope, non-goals, task, constraints, structured expected output, confidence, evidence versus inference requirements, and for read-only agents whether findings depend on uncommitted changes.
 6. Spawn read-only agents first: call `spawn_agent` or the available subagent-spawning tool after the compact proof passes.
 7. Wait and synthesize: wait for every spawned agent that affects the next decision, then merge facts, conflicts, uncertainty, risks, file targets, and tests.
 8. Decide whether workspace-write is justified: use a workspace-write agent only after synthesis, with exact write scope and verification needs.
@@ -112,11 +112,11 @@ Before spawning, emit a compact why-parallel proof:
 Why parallel:
 - independent track 1: <track and expected output>
 - independent track 2: <track and expected output>
-Blockers checked: opt-out, child-agent recursion, strict sequence, write conflict, dirty repo/isolation, external side effects, privacy/tool limits.
+Blockers checked: explicit user opt-out, child-agent recursion, strict sequential dependencies, conflicting writes, workspace-write dirty-state isolation, external side effects, privacy/tool limits, unbounded broad agent tasks.
 Initial roster: <agent names and read-only/workspace-write modes>
 ```
 
-The proof must show at least two independent tracks, blockers checked, and the initial roster. If any part is weak, do not spawn.
+The proof must show at least two independent tracks, blockers checked, and the initial roster. If at least two bounded read-only tracks can return independently useful outputs, spawn the smallest useful read-only roster unless a concrete blocker exists.
 
 ## Spawn subagents when at least two are true
 
@@ -137,7 +137,8 @@ The proof must show at least two independent tracks, blockers checked, and the i
 - The task needs one linear chain of work.
 - Agents would compete to mutate the same files.
 - The user asked for a quick answer.
-- The repo state is dirty and isolation is unclear.
+- Workspace-write agents would run against dirty repo state and isolation is unclear.
+- The proposed jobs are unbounded broad agent tasks.
 - You cannot define bounded jobs with clear outputs.
 
 ## User-facing output
@@ -158,7 +159,7 @@ If using subagents, include:
 Why parallel:
 - independent track 1: <mapping/reproduction/testing/docs/etc. and expected output>
 - independent track 2: <review/testing/design/etc. and expected output>
-Blockers checked: opt-out, child-agent recursion, strict sequence, write conflict, dirty repo/isolation, external side effects, privacy/tool limits.
+Blockers checked: explicit user opt-out, child-agent recursion, strict sequential dependencies, conflicting writes, workspace-write dirty-state isolation, external side effects, privacy/tool limits, unbounded broad agent tasks.
 Subagents:
 - name: <agent name>
   role: <bounded role>
@@ -168,7 +169,7 @@ Subagents:
 Initial roster: <agent names and read-only/workspace-write modes>
 ```
 
-Keep this proof to one or two lines plus the compact blocker checklist. It is a pre-spawn check, not a long planning ritual; if the proof fails, choose `sequential-plan` or `single-thread`.
+Keep this proof to one or two lines plus the compact blocker checklist. It is a pre-spawn check, not a long planning ritual. If at least two bounded read-only tracks can return independently useful outputs, spawn the smallest useful read-only roster unless a concrete blocker exists.
 
 Then spawn the agents, wait for all results, and synthesize before acting.
 
@@ -191,7 +192,7 @@ Use this order when the decision is `parallel-subagents`:
 
 ### Spawn Template
 
-For read-only tasks, the default constraint remains: do not edit files; do not spawn more agents; report uncertainty.
+For read-only tasks, the default constraint remains: do not edit files; do not spawn more agents; report uncertainty; report whether findings depend on uncommitted changes.
 
 ```text
 Spawn <agent-name> prompt:
@@ -214,6 +215,7 @@ For workspace-write tasks, add:
 ```text
 - write scope: <exact files/modules>
 - coordination: other agents may be working; do not revert unrelated edits
+- dirty-state isolation: <worktree or isolation status; do not spawn workspace-write agents if unclear>
 - verification: <targeted commands or manual checks>
 ```
 
@@ -297,7 +299,7 @@ Then implement the smallest safe plan.
 - Prefer read-only subagents before edit-capable subagents.
 - Keep each subagent bounded and independently useful.
 - Give each subagent a clear return format.
-- Before spawning, name at least two independent tracks and check blockers briefly; if the proof fails, use `sequential-plan` or `single-thread`.
+- Before spawning, name at least two independent tracks and check blockers briefly; if at least two bounded read-only tracks can return independently useful outputs, spawn the smallest useful read-only roster unless a concrete blocker exists.
 - If the decision is `parallel-subagents`, do not stop at a plan; spawn immediately or state the concrete blocker.
 - Do not recursively spawn subagents unless the user explicitly asks.
 - Wait for all subagents before final synthesis.

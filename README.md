@@ -9,7 +9,8 @@ This skill plugin gives Codex a quiet, compatibility-oriented orchestration gate
 - default/simple prompts do not write, spawn, or activate a global bootstrap automatically,
 - when `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation,
 - before spawning parallel subagents, briefly state why parallel work is useful, name at least two independent tracks with clear outputs, and check blockers,
-- still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, or unclear boundaries require it,
+- dirty repo state does not block bounded read-only mapper, reviewer, tester, docs, or research agents; those agents should report whether findings depend on uncommitted changes,
+- still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, workspace-write dirty-state isolation, or unclear boundaries require it,
 - parallel subagents are used only when they add real value.
 
 It packages:
@@ -80,7 +81,7 @@ A plugin can package the skills. The installer supports user/global skill instal
 ## Boundary model
 
 - **Plugin-level boundary**: this plugin is an execution-shape helper only. It can help choose `single-thread`, `sequential-plan`, or `parallel-subagents`; it does not decide truth, evidence, citations, approvals, vendor trust, or test sufficiency.
-- **Write-capability boundary**: the plugin is read-only-first. The manifest keeps `Write` only for bounded workspace-write roles such as `so_implementer` or `so_reproducer` scratch/log work. Code edits require explicit task scope or prior synthesis, and destructive/external actions remain governed by host/user/approval rules.
+- **Write-capability boundary**: the plugin is read-only-first. The manifest keeps `Write` only for bounded workspace-write roles such as `so_implementer` or `so_reproducer` scratch/log work. Code edits require explicit task scope or prior synthesis, and dirty repo state blocks workspace-write agents unless write isolation is clear. Destructive/external actions remain governed by host/user/approval rules.
 - **Host-repo boundary**: domain-specific user instructions, repository `AGENTS.md`, local scripts, audit requirements, and source-of-truth rules win over plugin guidance. When host repository rules are stricter, host repository rules win.
 - **Subagent-output boundary**: subagent output is work product, not evidence by itself. Required tests, citations, source checks, approvals, and audit notes still need to be performed directly.
 - **Hook boundary**: the hook reports classification metadata plus optional non-binding action hints. The live harness can add spawn-contract guidance for eval runs, but the hook still does not enforce truth, validate sources, authorize edits, satisfy citations, replace tests, or bypass safety/privacy/vendor/approval rules.
@@ -320,7 +321,7 @@ The CI suite verifies the live harness and trace grader, but real live Codex ses
 
 The fast check suite validates the eval assets and the offline trace grader, but it does not run live agent sessions.
 
-The prompt corpus lives at `evals/skill_prompts.jsonl`. Each row defines the expected hook decision, whether a spawn attempt is required or forbidden, expected and forbidden spawned agent roles for parallel cases, optional pre-spawn boundary overrides, wait/synthesis requirements, host-rule fixtures, command/spawn limits, and rubric ids. Spawn-required cases use the standard pre-spawn boundary terms by default. The grader validates these rows before scoring and exits with code `2` when the corpus is malformed. The set intentionally includes positive, negative, opt-out, child-agent, host-rule, documentation/setup validation, and broad parallel-work cases.
+The prompt corpus lives at `evals/skill_prompts.jsonl`. Each row defines the expected hook decision, whether a spawn attempt is required or forbidden, expected and forbidden spawned agent roles for parallel cases, optional pre-spawn boundary overrides, optional spawned-prompt text requirements, wait/synthesis requirements, host-rule fixtures, command/spawn limits, and rubric ids. Spawn-required cases use the standard pre-spawn boundary terms and spawned-prompt terms by default unless `required_pre_spawn_text_terms` or `required_spawn_prompt_text_terms` overrides them. The grader validates these rows before scoring and exits with code `2` when the corpus is malformed. The set intentionally includes positive, negative, opt-out, child-agent, host-rule, documentation/setup validation, and broad parallel-work cases.
 
 To grade captured JSONL traces, place one trace per prompt id in a directory as `<id>.jsonl`, then run:
 
@@ -328,7 +329,7 @@ To grade captured JSONL traces, place one trace per prompt id in a directory as 
 python3 scripts/grade_skill_traces.py --prompts evals/skill_prompts.jsonl --traces path/to/traces
 ```
 
-The grader checks observed `Result:` metadata from assistant or synthetic hook-context message events, timeout events, spawn attempts, expected spawned agent roles from actual `spawn_agent` arguments, duplicate labeled agent roles when a case opts into that policy, required pre-spawn boundary text, required waits after spawning, synthesis text, forbidden externally visible commands/tools, and command/spawn-count budgets. Synthetic `hook.context` events satisfy the decision check because that check measures hook classification, but they do not satisfy pre-spawn or final-text checks that measure assistant behavior. It supports both function-call traces and live Codex `collab_tool_call` traces; live spawned prompts should include exact `agent_type: so_*` labels when the tool has no dedicated agent-type field. Forbidden-command checks are restricted to command execution events so a safe spawn prompt that says not to run a command is not counted as running it. It prints structured JSON compatible with `evals/trace_eval.schema.json`, including observed `command_count` telemetry for each present trace.
+The grader checks observed `Result:` metadata from assistant or synthetic hook-context message events, timeout events, spawn attempts, expected spawned agent roles from actual `spawn_agent` arguments, duplicate labeled agent roles when a case opts into that policy, required pre-spawn boundary text, required spawned-prompt text, required waits after spawning, synthesis text, forbidden externally visible commands/tools, and command/spawn-count budgets. Synthetic `hook.context` events satisfy the decision check because that check measures hook classification, but they do not satisfy pre-spawn, spawned-prompt, or final-text checks that measure assistant behavior. It supports both function-call traces and live Codex `collab_tool_call` traces; live spawned prompts should include exact `agent_type: so_*` labels when the tool has no dedicated agent-type field and any required case-specific prompt text from `required_spawn_prompt_text_terms`. Forbidden-command checks are restricted to command execution events so a safe spawn prompt that says not to run a command is not counted as running it. It prints structured JSON compatible with `evals/trace_eval.schema.json`, including observed `command_count` telemetry for each present trace.
 
 The default `offline` profile enforces `max_command_count` for deterministic fixtures and synthetic regressions:
 
@@ -377,11 +378,24 @@ python3 scripts/run_live_skill_evals.py \
 
 Contract mode is owned by the live harness, not the production hook. The harness appends spawn-contract guidance to its synthetic hook context only for strong `use-subagent-orchestrator` classifications; simple, opt-out, and recursion-guard prompts stay result/reason metadata only. `--inject-local-hook-context` also prepends that harness context to the child prompt, which is useful when the CLI runtime does not expose successful hook `additionalContext` to the model during eval runs.
 
+For the latest narrow-debug regression, run the contract-mode no-spawn cases directly:
+
+```bash
+python3 scripts/run_live_skill_evals.py \
+  --traces evals/live_traces/narrow-debug-contract \
+  --hook-mode contract \
+  --inject-local-hook-context \
+  --case single-file-failing-test-debug \
+  --case single-assertion-debug
+```
+
+These cases should stay `single-thread-likely`, should not receive spawn-contract guidance, and should not spawn.
+
 Contract-mode live runs also append a bounded live-eval execution limit to the child prompt. This keeps broad prompts such as branch reviews focused on producing orchestration trace evidence instead of running full audits, external review services, network calls, package installs, full test suites, or broad repository sweeps. Spawned runs are instructed to use one post-spawn wait and then synthesize from available agent results, noting unavailable agents as blockers instead of repeatedly waiting or falling back to a sequential review.
 
 For prompt rows where `must_not_spawn` is true, contract-mode live runs add a stronger no-spawn case limit: do not perform the underlying branch review, audit, debug, or documentation sweep; finish after a couple of quick read-only checks. This keeps boundary and opt-out cases focused on hook behavior instead of turning them into full repository reviews.
 
-In contract mode, strong orchestration cases are expected to emit a pre-spawn assistant boundary that includes `Subagent orchestration gate`, `Result: use-subagent-orchestrator`, `Reason:`, a compact `Why parallel:` proof naming at least two independent tracks, `Blockers checked:`, and the bounded `Subagents:` plan before any spawn call. Spawn prompts should start with the exact `agent_type: so_*` line, leave `fork_context` unset when using custom agent types, and carry any needed context in the prompt body.
+In contract mode, strong orchestration cases are expected to emit a pre-spawn assistant boundary that includes `Subagent orchestration gate`, `Result: use-subagent-orchestrator`, `Reason:`, a compact `Why parallel:` proof naming at least two independent tracks, `Blockers checked:`, and the bounded `Subagents:` plan before any spawn call. The blocker checklist should distinguish workspace-write dirty-state isolation from bounded read-only inspection. Spawn prompts should start with the exact `agent_type: so_*` line, leave `fork_context` unset when using custom agent types, carry any needed context in the prompt body, and tell read-only agents to report whether findings depend on uncommitted changes.
 
 For spawn-contract evals, keep the subagent-capable user/profile configuration enabled. `--codex-arg=--ignore-user-config` is useful for classifier smoke tests, but it can remove the live spawn surface and turn strong orchestration cases into expected failures.
 
@@ -400,7 +414,9 @@ python3 scripts/run_live_skill_evals.py \
 
 - Keep `max_depth = 1` if you manually merge `snippets/config.subagents.toml`.
 - Prefer read-only subagents first.
+- Do not treat dirty repo state as a blocker for bounded read-only agents; require them to report whether findings depend on uncommitted changes.
 - Do not let multiple agents edit the same files unless they are in isolated worktrees.
+- Treat dirty repo state as a blocker for workspace-write agents unless write isolation is clear.
 - Treat the hook as classification metadata plus optional non-binding hints, not an enforcement boundary; keep contract mode limited to eval or deliberate validation runs.
 - Respect user opt-outs.
 - Repository-specific `AGENTS.md` files and source-of-truth project rules remain higher authority than this global guidance.

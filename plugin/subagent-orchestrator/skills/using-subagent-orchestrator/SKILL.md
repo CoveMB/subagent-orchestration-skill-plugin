@@ -25,7 +25,7 @@ If this session is already a bounded dispatched subagent task, do not recursivel
 
 Existing orchestration, routing, bootstrap, skill-selection, and agent-management frameworks take priority. Use `subagent-orchestrator` only as a complement or fallback.
 
-When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, or unclear boundaries require it; define clear boundaries instead.
+When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Dirty repo state is not a blocker for bounded read-only agents; tell them to report whether findings depend on uncommitted changes. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, workspace-write dirty-state isolation, or unclear boundaries require it; define clear boundaries instead.
 
 ## Boundary check
 
@@ -105,7 +105,9 @@ Stop and evaluate before continuing when you notice:
 Do not use orchestration when:
 
 - coordination overhead would exceed value,
-- agents would edit the same files without worktree isolation,
+- conflicting writes would edit the same files without worktree isolation,
+- workspace-write agents would run in a dirty repo without clear isolation,
 - the task is strictly sequential,
 - the user wants a quick direct answer,
+- the jobs would be unbounded broad agent tasks,
 - you cannot define bounded subagent jobs with clear outputs.
