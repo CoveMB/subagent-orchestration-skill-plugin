@@ -1,6 +1,6 @@
 {
   "name": "subagent-orchestrator",
-  "version": "0.2.0",
+  "version": "0.2.0+codex.20260606031445",
   "description": "Optional Codex execution-shape helper for choosing single-thread, sequential, or bounded parallel subagent work when orchestration is explicitly requested or clearly valuable.",
   "author": {
     "name": "CoveMB"

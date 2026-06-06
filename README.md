@@ -59,7 +59,7 @@ For Codex, the quiet behavior comes from three layers together:
 2. **Orchestration skill**: `subagent-orchestrator` chooses `single-thread`, `sequential-plan`, or `parallel-subagents`.
 3. **UserPromptSubmit hook**: reports a result and reason through valid `additionalContext`.
 
-The hook does not spawn agents by itself. For `use-subagent-orchestrator` and `orchestration-check` results, it appends a production orchestration contract to `additionalContext`. The contract tells the assistant to load the orchestrator, choose `single-thread`, `sequential-plan`, or `parallel-subagents`, and call `spawn_agent` or the available subagent-spawning tool when `parallel-subagents` is selected and tool policy permits. It should state the blocker and use the closest safe fallback when spawning is unavailable, the proof fails, or higher-priority rules block spawning.
+The hook does not spawn agents by itself. For `use-subagent-orchestrator` and `orchestration-check` results, it appends a production orchestration contract to `additionalContext`. The contract tells the assistant to load the orchestrator, choose `single-thread`, `sequential-plan`, or `parallel-subagents`, and call `spawn_agent` or the available subagent-spawning tool when `parallel-subagents` is selected and tool policy permits. If tool policy requires explicit user authorization before spawning, the assistant should ask the user whether to spawn subagents. It should state the blocker and use the closest safe fallback when spawning is otherwise unavailable, the proof fails, or higher-priority rules block spawning.
 
 Hook result mapping:
 

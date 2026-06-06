@@ -199,6 +199,8 @@ def assert_context_includes_action_contract(prompt: str, expected_result: str, t
     lower_context = context.lower()
     assert "\naction: production contract: " in lower_context, (prompt, context)
     assert "non-binding hint" not in lower_context, (prompt, context)
+    assert "standing authorization" not in lower_context, (prompt, context)
+    assert "standing user authorization" not in lower_context, (prompt, context)
     for term in terms:
         assert term in lower_context, (prompt, term, context)
     assert_context_uses_professional_status_format(context)
@@ -1309,7 +1311,9 @@ def test_hook_emits_production_action_contract_for_strong_orchestration() -> Non
             "choose single-thread, sequential-plan, or parallel-subagents",
             "if parallel-subagents is selected and tool policy permits",
             "spawn the smallest useful bounded read-only roster",
-            "if spawning is unavailable or blocked",
+            "if tool policy requires explicit user authorization before spawning",
+            "ask the user whether to spawn subagents",
+            "if spawning is otherwise unavailable or blocked",
         ],
     )
 
@@ -1322,6 +1326,8 @@ def test_hook_emits_checklist_contract_for_conditional_orchestration() -> None:
             "run the orchestration checklist",
             "spawn only if at least two independent read-only tracks can return independently useful outputs",
             "no concrete blocker exists",
+            "tool policy requires explicit user authorization before spawning",
+            "ask the user whether to spawn subagents",
         ],
     )
 
@@ -1434,7 +1440,7 @@ def test_hook_ignores_live_eval_contract_mode_environment() -> None:
         "Subagent orchestration gate",
         "Result: use-subagent-orchestrator",
         "Reason: Strong orchestration signals detected (architecture/refactor, debugging/root-cause, tests/verification).",
-        "Action: Production contract: invoke the subagent-orchestrator skill before broad work; choose single-thread, sequential-plan, or parallel-subagents; if parallel-subagents is selected and tool policy permits, emit a compact why-parallel proof, define bounded roles, spawn the smallest useful bounded read-only roster, wait, then synthesize before edits; if spawning is unavailable or blocked, state the blocker and continue with the closest safe fallback.",
+        "Action: Production contract: invoke the subagent-orchestrator skill before broad work; choose single-thread, sequential-plan, or parallel-subagents; if parallel-subagents is selected and tool policy permits, emit a compact why-parallel proof, define bounded roles, spawn the smallest useful bounded read-only roster, wait, then synthesize before edits; if tool policy requires explicit user authorization before spawning, ask the user whether to spawn subagents; if spawning is otherwise unavailable or blocked, state the blocker and continue with the closest safe fallback.",
     ]
     assert "Eval mode: live-eval spawn trace contract." not in context
 

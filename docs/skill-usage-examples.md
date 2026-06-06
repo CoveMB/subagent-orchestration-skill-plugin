@@ -10,7 +10,7 @@ Use this skill when you need to decide whether orchestration belongs in the task
 
 It fits when the user invokes it directly, a hook contract selects it, or the task is broad enough that a short orchestration check may help. It should stay out of simple default work. Repository instructions, user opt-outs, child-agent boundaries, and existing workflow systems still come first.
 
-It returns `skip`, `check`, or `use-subagent-orchestrator`. It does not spawn agents by itself; strong/check hook results carry a production orchestration contract that still depends on tool availability and tool policy.
+It returns `skip`, `check`, or `use-subagent-orchestrator`. It does not spawn agents by itself; strong/check hook results carry a production orchestration contract that still depends on tool availability and tool policy. If tool policy requires explicit user authorization before spawning, ask the user whether to spawn subagents instead of silently falling back.
 
 ### Example: explicit gate request
 
@@ -57,7 +57,7 @@ Use this skill when orchestration is explicitly requested or when `using-subagen
 
 It is most useful for complex debugging, branch review, refactors, migrations, performance work, security-sensitive work, or multi-module work. Parallel subagents make sense only when bounded independent tracks can improve correctness, evidence quality, speed, or context hygiene.
 
-Subagent output is work product. It does not replace required tests, citations, approvals, or direct verification. If the skill selects `parallel-subagents` and a spawning tool is available, briefly state why parallel work is useful, name at least two independent tracks with clear outputs, check blockers, then state the role, mode, scope, expected output, and no recursive fan-out requirement before spawning bounded agents in the same turn.
+Subagent output is work product. It does not replace required tests, citations, approvals, or direct verification. If the skill selects `parallel-subagents` and a spawning tool is available, briefly state why parallel work is useful, name at least two independent tracks with clear outputs, check blockers, then state the role, mode, scope, expected output, and no recursive fan-out requirement before spawning bounded agents in the same turn. When the spawning tool requires explicit user authorization, ask the user whether to spawn subagents first.
 
 ### Example: single-thread
 
@@ -170,6 +170,7 @@ The final response should lead with material findings. If there are no material 
 - Stay single-threaded for tiny edits, simple questions, explicit opt-outs, child-agent tasks, and strictly linear work.
 - Prefer read-only agents first for broad investigation, review, or testing questions.
 - Do not treat dirty repo state as a blocker for bounded read-only agents; tell them to report whether findings depend on uncommitted changes.
+- Ask the user whether to spawn subagents when the available tool policy requires explicit user authorization.
 - Treat the plugin as read-only-first: default/simple prompts do not write, spawn, or activate a global bootstrap automatically.
 - Use bounded workspace-write roles only when scoped and isolated: `so_reproducer` may collect scratch/log work after narrowing, while `so_implementer` needs explicit task scope or prior synthesis before code edits. Dirty repo state blocks workspace-write agents when isolation is unclear.
 - Keep destructive/external actions under host/user/approval rules.

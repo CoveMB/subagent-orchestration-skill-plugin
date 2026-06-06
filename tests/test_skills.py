@@ -35,6 +35,7 @@ DECISION_MAPPING_REQUIRED_TERMS = [
     "do not recursively orchestrate unless the parent explicitly provided bounded permission",
     "does not spawn agents by itself",
     "production orchestration contract",
+    "ask the user whether to spawn subagents",
     "state the blocker",
     "chooses only `single-thread`, `sequential-plan`, or `parallel-subagents`",
 ]
@@ -479,6 +480,8 @@ def test_skills_allow_bounded_read_only_delegation_without_overriding_constraint
     for path in source_paths:
         text = path.read_text(encoding="utf-8").lower()
         assert "standing authorization" not in text, path
+        assert "standing user authorization" not in text, path
+        assert "ask the user whether to spawn subagents" in text, path
         assert_text_contains_all(text, required_terms, path)
 
     for path in [ORCHESTRATOR_SKILL, USING_ORCHESTRATOR_SKILL]:
@@ -494,6 +497,8 @@ def test_parallel_subagent_decision_requires_actual_spawn_attempt() -> None:
         "spawn_agent",
         "available subagent-spawning tool",
         "do not stop at a plan",
+        "if vendor/tool policy requires explicit user authorization before spawning",
+        "ask the user whether to spawn subagents",
     ]
     for path in [ORCHESTRATOR_SKILL, USING_ORCHESTRATOR_SKILL]:
         text = path.read_text(encoding="utf-8").lower()

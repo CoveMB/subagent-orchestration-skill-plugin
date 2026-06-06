@@ -589,13 +589,15 @@ ACTION_CONTRACTS = {
         "Production contract: invoke the subagent-orchestrator skill before broad work; "
         "choose single-thread, sequential-plan, or parallel-subagents; if parallel-subagents is selected and "
         "tool policy permits, emit a compact why-parallel proof, define bounded roles, spawn the smallest useful "
-        "bounded read-only roster, wait, then synthesize before edits; if spawning is unavailable or blocked, "
-        "state the blocker and continue with the closest safe fallback."
+        "bounded read-only roster, wait, then synthesize before edits; if tool policy requires explicit user "
+        "authorization before spawning, ask the user whether to spawn subagents; if spawning is otherwise "
+        "unavailable or blocked, state the blocker and continue with the closest safe fallback."
     ),
     "orchestration-check": (
         "Production contract: run the orchestration checklist; load subagent-orchestrator only if independent "
         "tracks are clear; spawn only if at least two independent read-only tracks can return independently useful "
-        "outputs, no concrete blocker exists, parallel-subagents is selected, and tool policy permits."
+        "outputs, no concrete blocker exists, parallel-subagents is selected, and tool policy permits; if tool "
+        "policy requires explicit user authorization before spawning, ask the user whether to spawn subagents."
     ),
 }
 

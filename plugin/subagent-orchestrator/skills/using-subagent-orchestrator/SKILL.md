@@ -25,7 +25,7 @@ If this session is already a bounded dispatched subagent task, do not recursivel
 
 Existing orchestration, routing, bootstrap, skill-selection, and agent-management frameworks take priority. Use `subagent-orchestrator` only as a complement or fallback.
 
-When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Dirty repo state is not a blocker for bounded read-only agents; tell them to report whether findings depend on uncommitted changes. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, workspace-write dirty-state isolation, or unclear boundaries require it; define clear boundaries instead.
+When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Dirty repo state is not a blocker for bounded read-only agents; tell them to report whether findings depend on uncommitted changes. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, workspace-write dirty-state isolation, or unclear boundaries require it; define clear boundaries instead. If vendor/tool policy requires explicit user authorization before spawning, ask the user whether to spawn subagents instead of silently falling back.
 
 ## Boundary check
 
@@ -58,7 +58,7 @@ Do not print this gate for simple/default prompts.
 
 ## Hook result mapping
 
-Hook classification is metadata plus a production orchestration contract for strong/check decisions. It does not spawn agents by itself. The contract tells the assistant to load the orchestrator, choose an execution shape, spawn only when `parallel-subagents` is selected and tool policy permits, and state the blocker when spawning is unavailable or blocked.
+Hook classification is metadata plus a production orchestration contract for strong/check decisions. It does not spawn agents by itself. The contract tells the assistant to load the orchestrator, choose an execution shape, spawn only when `parallel-subagents` is selected and tool policy permits, ask the user whether to spawn subagents when tool policy requires explicit user authorization, and state the blocker when spawning is otherwise unavailable or blocked.
 
 | Hook result | Compatibility-gate action | Execution-shape action |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ The desired result is one of:
 - `parallel-subagents`
 
 Only spawn subagents when the evaluation shows real value.
-When the evaluation selects `parallel-subagents`, actual spawning is required: call `spawn_agent` or the available subagent-spawning tool after giving the compact why-parallel proof and defining bounded roles. Do not stop at a plan, recommendation, or statement that subagents would be useful. If no subagent-spawning tool is available, the proof fails, or a higher-priority instruction blocks spawning, state that blocker and proceed with the closest sequential fallback.
+When the evaluation selects `parallel-subagents`, actual spawning is required: call `spawn_agent` or the available subagent-spawning tool after giving the compact why-parallel proof and defining bounded roles. Do not stop at a plan, recommendation, or statement that subagents would be useful. If vendor/tool policy requires explicit user authorization before spawning, ask the user whether to spawn subagents. If no subagent-spawning tool is available, the proof fails, or another higher-priority instruction blocks spawning, state that blocker and proceed with the closest sequential fallback.
 
 ## If `check`
 
