@@ -8,7 +8,7 @@ For simple/default prompts, stay silent and proceed single-threaded.
 
 Hook result mapping:
 
-Hook classification is metadata plus a production orchestration contract for strong/check decisions. It does not spawn agents by itself. The contract tells the assistant to load the orchestrator, choose an execution shape, spawn only when `parallel-subagents` is selected and tool policy permits, and state the blocker when spawning is unavailable or blocked.
+Hook classification is metadata plus a production orchestration contract for strong/check decisions. It does not spawn agents by itself. The contract tells the assistant to load the orchestrator, choose an execution shape, apply standing user authorization for bounded read-only delegation when `parallel-subagents` is selected and no concrete blocker exists, and state the blocker when spawning is otherwise unavailable or blocked.
 
 | Hook result | Compatibility-gate action | Execution-shape action |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ Use subagent-orchestrator only for explicit subagent/orchestration requests or c
 
 For complex debugging, PR review, refactors, architecture exploration, test failures, migrations, performance work, security-sensitive work, unfamiliar APIs, or multi-file changes, the `subagent-orchestrator` skill may be used as a complement or fallback.
 
-When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Do not treat dirty repo state as a blocker for bounded read-only agents; tell them to report whether findings depend on uncommitted changes. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, workspace-write dirty-state isolation, or unclear boundaries require it. Subagents are read-only by default; give a compact why-parallel proof and define clear boundaries first.
+When `parallel-subagents` is selected, standing user authorization for bounded read-only delegation applies; do not ask a separate question solely for bounded read-only delegation. Do not treat dirty repo state as a blocker for bounded read-only agents; tell them to report whether findings depend on uncommitted changes. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, workspace-write dirty-state isolation, or unclear boundaries require it. Subagents are read-only by default; give a compact why-parallel proof and define clear boundaries first.
 
 If a parallel workflow is valuable:
 

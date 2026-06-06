@@ -199,6 +199,8 @@ def assert_context_includes_action_contract(prompt: str, expected_result: str, t
     lower_context = context.lower()
     assert "\naction: production contract: " in lower_context, (prompt, context)
     assert "non-binding hint" not in lower_context, (prompt, context)
+    assert "explicit user authorization before spawning" not in lower_context, (prompt, context)
+    assert "ask the user whether to spawn subagents" not in lower_context, (prompt, context)
     for term in terms:
         assert term in lower_context, (prompt, term, context)
     assert_context_uses_professional_status_format(context)
@@ -382,6 +384,57 @@ def test_with_hook_installs_hook_without_config_patch() -> None:
         assert_skills_installed(home)
         assert hook_path(app_home).exists()
         assert not config_path(app_home).exists()
+
+
+def test_with_hook_refreshes_configured_user_scope_contract_artifacts() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        home = root / "home"
+        app_home = root / "app"
+        stale_hook = hook_path(app_home)
+        stale_hook.parent.mkdir(parents=True)
+        stale_hook.write_text(
+            "ACTION_HINTS = {'use-subagent-orchestrator': 'Non-binding hint'}\n",
+            encoding="utf-8",
+        )
+        stale_skill = skill_path(home, "subagent-orchestrator")
+        stale_skill.mkdir(parents=True)
+        (stale_skill / "SKILL.md").write_text(
+            "---\nname: subagent-orchestrator\n---\n# Stale skill\nNon-binding hint\n",
+            encoding="utf-8",
+        )
+        config = config_path(app_home)
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text(
+            "[[hooks.UserPromptSubmit]]\n"
+            "[[hooks.UserPromptSubmit.hooks]]\n"
+            f"command = \"python3 {stale_hook}\"\n",
+            encoding="utf-8",
+        )
+
+        proc = run_installer(["--with-hook"], home, app_home)
+
+        assert_installer_ok(proc)
+        configured_hook_text = stale_hook.read_text(encoding="utf-8")
+        installed_orchestrator_skill = (
+            skill_path(home, "subagent-orchestrator") / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        installed_gate_skill = (
+            skill_path(home, "using-subagent-orchestrator") / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        assert "Production contract" in configured_hook_text
+        assert "standing user authorization" in configured_hook_text
+        assert "ask the user whether to spawn subagents" not in configured_hook_text
+        assert "Non-binding hint" not in configured_hook_text
+        assert "standing user authorization" in installed_orchestrator_skill
+        assert "standing user authorization" in installed_gate_skill
+        assert "ask the user whether to spawn subagents" not in installed_orchestrator_skill
+        assert "ask the user whether to spawn subagents" not in installed_gate_skill
+        assert config.read_text(encoding="utf-8") == (
+            "[[hooks.UserPromptSubmit]]\n"
+            "[[hooks.UserPromptSubmit.hooks]]\n"
+            f"command = \"python3 {stale_hook}\"\n"
+        )
 
 
 def test_user_install_backs_up_different_existing_skill_and_hook() -> None:
@@ -1307,9 +1360,9 @@ def test_hook_emits_production_action_contract_for_strong_orchestration() -> Non
         [
             "invoke the subagent-orchestrator skill",
             "choose single-thread, sequential-plan, or parallel-subagents",
-            "if parallel-subagents is selected and tool policy permits",
+            "standing user authorization for bounded read-only delegation",
             "spawn the smallest useful bounded read-only roster",
-            "if spawning is unavailable or blocked",
+            "if spawning is otherwise unavailable or blocked",
         ],
     )
 
@@ -1322,6 +1375,7 @@ def test_hook_emits_checklist_contract_for_conditional_orchestration() -> None:
             "run the orchestration checklist",
             "spawn only if at least two independent read-only tracks can return independently useful outputs",
             "no concrete blocker exists",
+            "standing user authorization for bounded read-only delegation",
         ],
     )
 
@@ -1434,7 +1488,7 @@ def test_hook_ignores_live_eval_contract_mode_environment() -> None:
         "Subagent orchestration gate",
         "Result: use-subagent-orchestrator",
         "Reason: Strong orchestration signals detected (architecture/refactor, debugging/root-cause, tests/verification).",
-        "Action: Production contract: invoke the subagent-orchestrator skill before broad work; choose single-thread, sequential-plan, or parallel-subagents; if parallel-subagents is selected and tool policy permits, emit a compact why-parallel proof, define bounded roles, spawn the smallest useful bounded read-only roster, wait, then synthesize before edits; if spawning is unavailable or blocked, state the blocker and continue with the closest safe fallback.",
+        "Action: Production contract: invoke the subagent-orchestrator skill before broad work; choose single-thread, sequential-plan, or parallel-subagents; standing user authorization for bounded read-only delegation applies when parallel-subagents is selected and no concrete blocker exists; emit a compact why-parallel proof, define bounded roles, spawn the smallest useful bounded read-only roster, wait, then synthesize before edits; if spawning is otherwise unavailable or blocked, state the blocker and continue with the closest safe fallback.",
     ]
     assert "Eval mode: live-eval spawn trace contract." not in context
 
