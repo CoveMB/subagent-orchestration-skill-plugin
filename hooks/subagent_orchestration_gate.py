@@ -587,17 +587,15 @@ SIMPLE_SIGNALS = (
 ACTION_CONTRACTS = {
     "use-subagent-orchestrator": (
         "Production contract: invoke the subagent-orchestrator skill before broad work; "
-        "choose single-thread, sequential-plan, or parallel-subagents; standing user authorization for bounded "
-        "read-only delegation applies when parallel-subagents is selected and no concrete blocker exists; emit "
-        "a compact why-parallel proof, define bounded roles, spawn the smallest useful bounded read-only roster, "
-        "wait, then synthesize before edits; if spawning is otherwise unavailable or blocked, state the blocker "
-        "and continue with the closest safe fallback."
+        "choose single-thread, sequential-plan, or parallel-subagents; if parallel-subagents is selected and "
+        "tool policy permits, emit a compact why-parallel proof, define bounded roles, spawn the smallest useful "
+        "bounded read-only roster, wait, then synthesize before edits; if spawning is unavailable or blocked, "
+        "state the blocker and continue with the closest safe fallback."
     ),
     "orchestration-check": (
         "Production contract: run the orchestration checklist; load subagent-orchestrator only if independent "
         "tracks are clear; spawn only if at least two independent read-only tracks can return independently useful "
-        "outputs, no concrete blocker exists, parallel-subagents is selected, and standing user authorization for "
-        "bounded read-only delegation applies."
+        "outputs, no concrete blocker exists, parallel-subagents is selected, and tool policy permits."
     ),
 }
 

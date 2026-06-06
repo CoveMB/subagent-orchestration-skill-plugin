@@ -50,7 +50,7 @@ Subagents may not:
 
 ## Authorization and boundaries
 
-When `parallel-subagents` is selected, standing user authorization for bounded read-only delegation applies; do not ask a separate question solely for bounded read-only delegation. Do not treat dirty repo state as a blocker for bounded read-only mapper, reviewer, tester, docs, or research agents. Instead, instruct read-only agents to report whether findings depend on uncommitted changes. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, workspace-write dirty-state isolation, or unclear boundaries require it.
+When `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation. Do not treat dirty repo state as a blocker for bounded read-only mapper, reviewer, tester, docs, or research agents. Instead, instruct read-only agents to report whether findings depend on uncommitted changes. Still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, workspace-write dirty-state isolation, or unclear boundaries require it.
 
 Clear boundaries are required first: role, mode, scope, expected output, and no recursive fan-out. Ask the user only when boundaries cannot be defined, the user opted out, or the action itself needs approval such as destructive or externally visible work.
 
@@ -173,7 +173,7 @@ Keep this proof to one or two lines plus the compact blocker checklist. It is a 
 
 Then spawn the agents, wait for all results, and synthesize before acting.
 
-Actual spawning is part of the contract. When the execution shape is `parallel-subagents`, call `spawn_agent` or the available subagent-spawning tool in the same turn after giving the compact proof and defining bounded roles. Do not stop at a plan, recommendation, or statement that subagents would be useful. If no subagent-spawning tool is available, the proof fails, or another higher-priority instruction blocks spawning, state that blocker and proceed with the closest sequential fallback.
+Actual spawning is part of the contract. When the execution shape is `parallel-subagents`, call `spawn_agent` or the available subagent-spawning tool in the same turn after giving the compact proof and defining bounded roles. Do not stop at a plan, recommendation, or statement that subagents would be useful. If no subagent-spawning tool is available, the proof fails, or a higher-priority instruction blocks spawning, state that blocker and proceed with the closest sequential fallback.
 
 When the available subagent-spawning tool does not expose a dedicated `agent_type` parameter, begin the spawned task prompt with `agent_type: <agent-name>` so the role remains auditable in live traces. Use the exact names below, such as `so_mapper`, `so_tester`, and `so_reviewer`. When using a custom `agent_type`, keep `fork_context` unset and include the required context in the spawned task prompt instead.
 

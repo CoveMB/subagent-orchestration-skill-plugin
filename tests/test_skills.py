@@ -478,8 +478,7 @@ def test_skills_allow_bounded_read_only_delegation_without_overriding_constraint
 
     for path in source_paths:
         text = path.read_text(encoding="utf-8").lower()
-        assert "standing user authorization for bounded read-only delegation" in text, path
-        assert "ask the user whether to spawn subagents" not in text, path
+        assert "standing authorization" not in text, path
         assert_text_contains_all(text, required_terms, path)
 
     for path in [ORCHESTRATOR_SKILL, USING_ORCHESTRATOR_SKILL]:
@@ -495,7 +494,6 @@ def test_parallel_subagent_decision_requires_actual_spawn_attempt() -> None:
         "spawn_agent",
         "available subagent-spawning tool",
         "do not stop at a plan",
-        "standing user authorization for bounded read-only delegation",
     ]
     for path in [ORCHESTRATOR_SKILL, USING_ORCHESTRATOR_SKILL]:
         text = path.read_text(encoding="utf-8").lower()

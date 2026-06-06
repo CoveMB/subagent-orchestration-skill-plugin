@@ -8,7 +8,6 @@ This skill plugin gives Codex a quiet, compatibility-oriented orchestration gate
 - complex prompts may receive assistant-facing orchestration instructions, but the hook still never spawns agents or bypasses tool policy,
 - default/simple prompts do not write, spawn, or activate a global bootstrap automatically,
 - when `parallel-subagents` is selected, do not ask a separate question solely for bounded read-only delegation,
-- standing user authorization for bounded read-only delegation applies when `parallel-subagents` is selected and no concrete blocker exists,
 - before spawning parallel subagents, briefly state why parallel work is useful, name at least two independent tracks with clear outputs, and check blockers,
 - dirty repo state does not block bounded read-only mapper, reviewer, tester, docs, or research agents; those agents should report whether findings depend on uncommitted changes,
 - still stop or ask when repository rules, user instructions, safety policy, privacy/context-sharing, vendor/tool policy, approval rules, cost/budget limits, destructive actions, external side effects, workspace-write scope, workspace-write dirty-state isolation, or unclear boundaries require it,
@@ -60,7 +59,7 @@ For Codex, the quiet behavior comes from three layers together:
 2. **Orchestration skill**: `subagent-orchestrator` chooses `single-thread`, `sequential-plan`, or `parallel-subagents`.
 3. **UserPromptSubmit hook**: reports a result and reason through valid `additionalContext`.
 
-The hook does not spawn agents by itself. For `use-subagent-orchestrator` and `orchestration-check` results, it appends a production orchestration contract to `additionalContext`. The contract tells the assistant to load the orchestrator, choose `single-thread`, `sequential-plan`, or `parallel-subagents`, and call `spawn_agent` or the available subagent-spawning tool when `parallel-subagents` is selected and no concrete blocker exists. Standing user authorization for bounded read-only delegation applies in that case. It should state the blocker and use the closest safe fallback when spawning is otherwise unavailable, the proof fails, or higher-priority rules block spawning.
+The hook does not spawn agents by itself. For `use-subagent-orchestrator` and `orchestration-check` results, it appends a production orchestration contract to `additionalContext`. The contract tells the assistant to load the orchestrator, choose `single-thread`, `sequential-plan`, or `parallel-subagents`, and call `spawn_agent` or the available subagent-spawning tool when `parallel-subagents` is selected and tool policy permits. It should state the blocker and use the closest safe fallback when spawning is unavailable, the proof fails, or higher-priority rules block spawning.
 
 Hook result mapping:
 

@@ -10,7 +10,7 @@ Use this skill when you need to decide whether orchestration belongs in the task
 
 It fits when the user invokes it directly, a hook contract selects it, or the task is broad enough that a short orchestration check may help. It should stay out of simple default work. Repository instructions, user opt-outs, child-agent boundaries, and existing workflow systems still come first.
 
-It returns `skip`, `check`, or `use-subagent-orchestrator`. It does not spawn agents by itself; strong/check hook results carry a production orchestration contract that still depends on tool availability and concrete blockers. Standing user authorization for bounded read-only delegation applies when `parallel-subagents` is selected.
+It returns `skip`, `check`, or `use-subagent-orchestrator`. It does not spawn agents by itself; strong/check hook results carry a production orchestration contract that still depends on tool availability and tool policy.
 
 ### Example: explicit gate request
 
@@ -57,7 +57,7 @@ Use this skill when orchestration is explicitly requested or when `using-subagen
 
 It is most useful for complex debugging, branch review, refactors, migrations, performance work, security-sensitive work, or multi-module work. Parallel subagents make sense only when bounded independent tracks can improve correctness, evidence quality, speed, or context hygiene.
 
-Subagent output is work product. It does not replace required tests, citations, approvals, or direct verification. If the skill selects `parallel-subagents` and a spawning tool is available, briefly state why parallel work is useful, name at least two independent tracks with clear outputs, check blockers, then state the role, mode, scope, expected output, and no recursive fan-out requirement before spawning bounded agents in the same turn. Do not ask a separate question solely for bounded read-only delegation.
+Subagent output is work product. It does not replace required tests, citations, approvals, or direct verification. If the skill selects `parallel-subagents` and a spawning tool is available, briefly state why parallel work is useful, name at least two independent tracks with clear outputs, check blockers, then state the role, mode, scope, expected output, and no recursive fan-out requirement before spawning bounded agents in the same turn.
 
 ### Example: single-thread
 
