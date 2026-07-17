@@ -16,7 +16,7 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from file_ops import backup_path, content_matches, next_backup_path, path_exists, remove_path
 from toml_ops import (
@@ -194,6 +194,78 @@ def load_project_manifest(repo_root: Path) -> dict[str, Any]:
     for key, default_value in new_manifest(repo_root).items():
         data.setdefault(key, default_value)
     return data
+
+
+def raise_manifest_error(repo_root: Path, field: str, message: str) -> NoReturn:
+    raise SystemExit(f"error: install manifest {field} {message}: {manifest_path(repo_root)}") from None
+
+
+def resolve_manifest_action_path(repo_root: Path, value: object, field: str) -> Path:
+    if not isinstance(value, str) or value == "":
+        raise_manifest_error(repo_root, field, "must be a non-empty string")
+
+    relative_path = Path(value)
+    if relative_path.is_absolute() or relative_path.drive:
+        raise_manifest_error(repo_root, field, "must be a relative path")
+    if ".." in relative_path.parts:
+        raise_manifest_error(repo_root, field, "must not contain parent traversal")
+
+    resolved_repo_root = resolved_path(repo_root)
+    action_path = resolved_repo_root / relative_path
+    try:
+        resolved_target = resolved_path(action_path)
+    except (OSError, RuntimeError, ValueError):
+        raise_manifest_error(repo_root, field, "cannot be resolved safely")
+
+    if resolved_target == resolved_repo_root:
+        raise_manifest_error(repo_root, field, "must not target the repository root")
+    if not resolved_target.is_relative_to(resolved_repo_root):
+        raise_manifest_error(repo_root, field, "resolves outside the repository root")
+    return action_path
+
+
+def validated_manifest_path_entries(
+    repo_root: Path,
+    manifest: dict[str, Any],
+    field: str,
+) -> list[tuple[str, Path]]:
+    values = manifest.get(field, [])
+    if not isinstance(values, list):
+        raise_manifest_error(repo_root, field, "must be a list")
+    return [
+        (value, resolve_manifest_action_path(repo_root, value, f"{field}[{index}]"))
+        for index, value in enumerate(values)
+    ]
+
+
+def validated_manifest_backups(
+    repo_root: Path,
+    manifest: dict[str, Any],
+) -> list[tuple[str, Path, Path]]:
+    backups = manifest.get("backups", [])
+    if not isinstance(backups, list):
+        raise_manifest_error(repo_root, "backups", "must be a list")
+
+    validated_backups: list[tuple[str, Path, Path]] = []
+    for index, backup in enumerate(backups):
+        if not isinstance(backup, dict):
+            raise_manifest_error(repo_root, f"backups[{index}]", "must be an object")
+        path_value = backup.get("path")
+        backup_path_value = backup.get("backup_path")
+        path = resolve_manifest_action_path(repo_root, path_value, f"backups[{index}].path")
+        backup_path = resolve_manifest_action_path(
+            repo_root,
+            backup_path_value,
+            f"backups[{index}].backup_path",
+        )
+        validated_backups.append((path_value, path, backup_path))
+    return validated_backups
+
+
+def validate_project_manifest_paths(repo_root: Path, manifest: dict[str, Any]) -> None:
+    validated_manifest_path_entries(repo_root, manifest, "installed_paths")
+    validated_manifest_path_entries(repo_root, manifest, "created_paths")
+    validated_manifest_backups(repo_root, manifest)
 
 
 def record_created_path(manifest: dict[str, Any], repo_root: Path, path: Path) -> None:
@@ -736,8 +808,8 @@ def remove_project_agents_md(repo_root: Path, manifest: dict[str, Any], dry_run:
 
 
 def remove_installed_project_paths(repo_root: Path, manifest: dict[str, Any], dry_run: bool) -> None:
-    for relative_path in sorted(manifest.get("installed_paths", []), key=lambda value: value.count("/"), reverse=True):
-        path = repo_root / relative_path
+    installed_paths = validated_manifest_path_entries(repo_root, manifest, "installed_paths")
+    for _, path in sorted(installed_paths, key=lambda value: value[0].count("/"), reverse=True):
         remove_path(path, dry_run, "project install path")
 
 
@@ -747,11 +819,10 @@ def restore_backups(repo_root: Path, manifest: dict[str, Any], dry_run: bool) ->
         ".agents/plugins/marketplace.json",
         "AGENTS.md",
     }
-    for backup in reversed(manifest.get("backups", [])):
-        if backup["path"] in specially_patched_paths:
+    backups = validated_manifest_backups(repo_root, manifest)
+    for relative_path, path, backup_path in reversed(backups):
+        if relative_path in specially_patched_paths:
             continue
-        path = repo_root / backup["path"]
-        backup_path = repo_root / backup["backup_path"]
         if not path_exists(backup_path):
             continue
         if dry_run:
@@ -788,6 +859,7 @@ def uninstall_project(args: argparse.Namespace) -> int:
         print(f"no project install manifest found: {manifest_file}")
         return 0
     manifest = load_project_manifest(repo_root)
+    validate_project_manifest_paths(repo_root, manifest)
     restore_project_config(repo_root, manifest, args.dry_run)
     restore_project_marketplace(repo_root, manifest, args.dry_run)
     remove_project_agents_md(repo_root, manifest, args.dry_run)

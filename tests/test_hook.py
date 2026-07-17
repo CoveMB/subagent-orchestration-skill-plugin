@@ -314,6 +314,146 @@ def prepare_vendored_plugin(repo: Path) -> Path:
     return vendor_root
 
 
+def install_manifest_test_project(root: Path, repo_name: str = "repo") -> tuple[Path, Path, Path]:
+    home = root / "home"
+    app_home = root / "app"
+    repo = root / repo_name
+    repo.mkdir()
+    proc = run_installer(
+        [
+            "--scope",
+            "project",
+            "--repo-root",
+            str(repo),
+            "--activate-gate",
+            "--with-project-agents",
+            "--with-repo-marketplace",
+            "--append-project-agents-md",
+        ],
+        home,
+        app_home,
+    )
+    assert_installer_ok(proc)
+    return home, app_home, repo
+
+
+def read_project_manifest(repo: Path) -> dict[str, object]:
+    return json.loads(project_manifest_path(repo).read_text(encoding="utf-8"))
+
+
+def write_project_manifest(repo: Path, manifest: dict[str, object]) -> None:
+    project_manifest_path(repo).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
+def snapshot_tree(root: Path) -> dict[str, tuple[str, bytes | str | None]]:
+    snapshot: dict[str, tuple[str, bytes | str | None]] = {}
+    for path in sorted(root.rglob("*")):
+        relative_path = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            snapshot[relative_path] = ("symlink", os.readlink(path))
+        elif path.is_dir():
+            snapshot[relative_path] = ("directory", None)
+        else:
+            snapshot[relative_path] = ("file", path.read_bytes())
+    return snapshot
+
+
+def run_project_uninstall(
+    repo: Path,
+    home: Path,
+    app_home: Path,
+    *,
+    dry_run: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    arguments = ["--scope", "project", "--repo-root", str(repo), "--uninstall"]
+    if dry_run:
+        arguments.append("--dry-run")
+    return run_installer(arguments, home, app_home)
+
+
+def assert_project_manifest_rejected(
+    proc: subprocess.CompletedProcess[str],
+    expected_field: str,
+) -> None:
+    output = proc.stderr + proc.stdout
+    assert proc.returncode != 0, output
+    assert "error: install manifest" in output, output
+    assert expected_field in output, output
+    assert "Traceback" not in output, output
+
+
+def assert_unsafe_installed_path_is_rejected(case: str) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        outside = root / "outside"
+        outside.mkdir()
+        sentinel = outside / "sentinel.txt"
+        sentinel.write_text("outside sentinel\n", encoding="utf-8")
+        home, app_home, repo = install_manifest_test_project(root)
+
+        if case == "absolute":
+            manifest_value = str(sentinel)
+        elif case == "traversal":
+            manifest_value = "../outside/sentinel.txt"
+        elif case == "repo-root":
+            manifest_value = "."
+        elif case == "symlink-parent":
+            (repo / "escape").symlink_to(outside, target_is_directory=True)
+            manifest_value = "escape/sentinel.txt"
+        else:
+            raise AssertionError(f"unknown unsafe installed path case: {case}")
+
+        manifest = read_project_manifest(repo)
+        manifest["installed_paths"] = [manifest_value]
+        write_project_manifest(repo, manifest)
+        repo_before = snapshot_tree(repo)
+        outside_before = snapshot_tree(outside)
+
+        proc = run_project_uninstall(repo, home, app_home)
+
+        assert_project_manifest_rejected(proc, "installed_paths[0]")
+        assert snapshot_tree(repo) == repo_before
+        assert snapshot_tree(outside) == outside_before
+
+
+def assert_unsafe_backup_path_is_rejected(field: str) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        outside = root / "outside"
+        outside.mkdir()
+        home, app_home, repo = install_manifest_test_project(root)
+        manifest = read_project_manifest(repo)
+
+        if field == "path":
+            backup_source = repo / "backup-source.txt"
+            backup_source.write_text("backup source\n", encoding="utf-8")
+            outside_destination = outside / "destination.txt"
+            outside_destination.write_text("outside destination\n", encoding="utf-8")
+            manifest["backups"] = [{
+                "path": str(outside_destination),
+                "backup_path": "backup-source.txt",
+            }]
+        elif field == "backup_path":
+            outside_source = outside / "source.txt"
+            outside_source.write_text("outside source\n", encoding="utf-8")
+            manifest["backups"] = [{
+                "path": ".codex/config.toml",
+                "backup_path": "../outside/source.txt",
+            }]
+        else:
+            raise AssertionError(f"unknown backup field: {field}")
+
+        write_project_manifest(repo, manifest)
+        repo_before = snapshot_tree(repo)
+        outside_before = snapshot_tree(outside)
+
+        proc = run_project_uninstall(repo, home, app_home)
+
+        assert_project_manifest_rejected(proc, f"backups[0].{field}")
+        assert snapshot_tree(repo) == repo_before
+        assert snapshot_tree(outside) == outside_before
+
+
 def assert_skills_installed(home: Path) -> None:
     assert (skill_path(home, "subagent-orchestrator") / "SKILL.md").exists()
     assert (skill_path(home, "using-subagent-orchestrator") / "SKILL.md").exists()
@@ -832,6 +972,144 @@ def test_project_uninstall_removes_manifest_owned_files_only() -> None:
         if (repo / "AGENTS.md").exists():
             assert "Optional subagent orchestration" not in (repo / "AGENTS.md").read_text(encoding="utf-8")
         assert unrelated_file.exists()
+
+
+def test_project_uninstall_accepts_valid_manifest_after_repo_move() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        home, app_home, repo = install_manifest_test_project(root)
+        original_repo_root = str(repo.resolve())
+        unrelated_file = repo / "unrelated.txt"
+        unrelated_file.write_text("keep\n", encoding="utf-8")
+        assert read_project_manifest(repo)["repo_root"] == original_repo_root
+
+        moved_repo = root / "moved-repo"
+        repo.rename(moved_repo)
+        proc = run_project_uninstall(moved_repo, home, app_home)
+
+        assert_installer_ok(proc)
+        assert not project_manifest_path(moved_repo).exists()
+        assert (moved_repo / "unrelated.txt").read_text(encoding="utf-8") == "keep\n"
+
+
+def test_project_uninstall_dry_run_rejects_unsafe_manifest_without_destructive_output() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        outside = root / "outside"
+        outside.mkdir()
+        sentinel = outside / "sentinel.txt"
+        sentinel.write_text("outside sentinel\n", encoding="utf-8")
+        home, app_home, repo = install_manifest_test_project(root)
+        manifest = read_project_manifest(repo)
+        manifest["installed_paths"] = [str(sentinel)]
+        write_project_manifest(repo, manifest)
+        repo_before = snapshot_tree(repo)
+        outside_before = snapshot_tree(outside)
+
+        proc = run_project_uninstall(repo, home, app_home, dry_run=True)
+
+        assert_project_manifest_rejected(proc, "installed_paths[0]")
+        assert "would remove" not in proc.stdout
+        assert "would restore" not in proc.stdout
+        assert "would patch" not in proc.stdout
+        assert snapshot_tree(repo) == repo_before
+        assert snapshot_tree(outside) == outside_before
+
+
+def test_project_uninstall_preserves_in_repo_symlink_target() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        home = root / "home"
+        app_home = root / "app"
+        repo = root / "repo"
+        repo.mkdir()
+        vendor_root = prepare_vendored_plugin(repo)
+        proc = run_installer(
+            [
+                "--scope",
+                "project",
+                "--repo-root",
+                str(repo),
+                "--from-vendor",
+                str(vendor_root),
+                "--link-skills",
+            ],
+            home,
+            app_home,
+        )
+        assert_installer_ok(proc)
+        linked_skill = project_skill_path(repo, "subagent-orchestrator")
+        linked_using_skill = project_skill_path(repo, "using-subagent-orchestrator")
+        target_skill = vendor_root / "plugin" / "subagent-orchestrator" / "skills" / "subagent-orchestrator"
+        target_using_skill = vendor_root / "plugin" / "subagent-orchestrator" / "skills" / "using-subagent-orchestrator"
+        assert linked_skill.is_symlink()
+        assert linked_using_skill.is_symlink()
+        manifest = read_project_manifest(repo)
+        manifest["installed_paths"] = [
+            ".agents/skills/subagent-orchestrator",
+            ".agents/skills/using-subagent-orchestrator",
+        ]
+        write_project_manifest(repo, manifest)
+
+        uninstall_proc = run_project_uninstall(repo, home, app_home)
+
+        assert_installer_ok(uninstall_proc)
+        assert not linked_skill.is_symlink()
+        assert not linked_using_skill.is_symlink()
+        assert (target_skill / "SKILL.md").exists()
+        assert (target_using_skill / "SKILL.md").exists()
+
+
+def test_project_uninstall_rejects_absolute_backup_destination_before_mutation() -> None:
+    assert_unsafe_backup_path_is_rejected("path")
+
+
+def test_project_uninstall_rejects_absolute_installed_path_before_mutation() -> None:
+    assert_unsafe_installed_path_is_rejected("absolute")
+
+
+def test_project_uninstall_rejects_malformed_manifest_path_structures() -> None:
+    cases: list[tuple[str, object, str]] = [
+        ("installed_paths", 42, "installed_paths"),
+        ("installed_paths", [None], "installed_paths[0]"),
+        ("created_paths", "not-a-list", "created_paths"),
+        ("created_paths", [""], "created_paths[0]"),
+        ("backups", {}, "backups"),
+        ("backups", [None], "backups[0]"),
+        ("backups", [{}], "backups[0].path"),
+        ("backups", [{"path": 7, "backup_path": "backup.txt"}], "backups[0].path"),
+        ("backups", [{"path": "target.txt", "backup_path": None}], "backups[0].backup_path"),
+    ]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        for index, (field, value, expected_field) in enumerate(cases):
+            home, app_home, repo = install_manifest_test_project(root, f"repo-{index}")
+            manifest = read_project_manifest(repo)
+            manifest[field] = value
+            write_project_manifest(repo, manifest)
+            repo_before = snapshot_tree(repo)
+
+            proc = run_project_uninstall(repo, home, app_home)
+
+            assert_project_manifest_rejected(proc, expected_field)
+            assert snapshot_tree(repo) == repo_before
+
+
+def test_project_uninstall_rejects_repo_root_target_before_mutation() -> None:
+    assert_unsafe_installed_path_is_rejected("repo-root")
+
+
+def test_project_uninstall_rejects_symlink_parent_escape() -> None:
+    assert_unsafe_installed_path_is_rejected("symlink-parent")
+
+
+def test_project_uninstall_rejects_traversal_backup_source_before_special_path_skip() -> None:
+    assert_unsafe_backup_path_is_rejected("backup_path")
+
+
+def test_project_uninstall_rejects_traversal_installed_path_before_mutation() -> None:
+    assert_unsafe_installed_path_is_rejected("traversal")
 
 
 def test_default_install_preserves_existing_config() -> None:
