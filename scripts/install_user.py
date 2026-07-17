@@ -15,6 +15,7 @@ import os
 import shutil
 import stat
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -54,6 +55,22 @@ COPY_IGNORE_PATTERNS = (
     "*.egg-info",
     ".venv",
     "node_modules",
+)
+PROJECT_UNINSTALL_CONTENT_PATHS = (
+    Path(".codex") / "config.toml",
+    Path(".agents") / "plugins" / "marketplace.json",
+    Path("AGENTS.md"),
+)
+SPECIALLY_PATCHED_PROJECT_PATHS = frozenset(
+    path.as_posix() for path in PROJECT_UNINSTALL_CONTENT_PATHS
+)
+PROJECT_CLEANUP_PATHS = (
+    Path(".codex") / "agents",
+    Path(".codex") / "hooks",
+    Path(".agents") / "skills",
+    Path(".agents") / "plugins",
+    Path(".codex"),
+    Path(".agents"),
 )
 
 PROJECT_AGENTS_SECTION = f"""
@@ -141,6 +158,10 @@ def resolved_path(path: Path) -> Path:
     return path.expanduser().resolve(strict=False)
 
 
+def lexical_path(path: Path) -> Path:
+    return Path(os.path.abspath(path.expanduser()))
+
+
 def is_inside(base: Path, path: Path) -> bool:
     base_path = resolved_path(base)
     target_path = resolved_path(path)
@@ -154,8 +175,31 @@ def ensure_inside_repo(repo_root: Path, path: Path) -> Path:
     return target_path
 
 
+def ensure_action_inside_repo(repo_root: Path, path: Path) -> Path:
+    resolved_repo_root = resolved_path(repo_root)
+    action_path = lexical_path(path)
+    if action_path == resolved_repo_root or not action_path.is_relative_to(resolved_repo_root):
+        raise ValueError(f"refusing to act outside repo root: {action_path}")
+    resolved_parent = resolved_path(action_path.parent)
+    if resolved_parent != resolved_repo_root and not resolved_parent.is_relative_to(resolved_repo_root):
+        raise ValueError(f"refusing to act through a parent outside repo root: {resolved_parent}")
+    return action_path
+
+
+def path_has_symlink_component(repo_root: Path, path: Path) -> bool:
+    resolved_repo_root = resolved_path(repo_root)
+    current_path = lexical_path(path)
+    if not current_path.is_relative_to(resolved_repo_root):
+        return True
+    while current_path != resolved_repo_root:
+        if current_path.is_symlink():
+            return True
+        current_path = current_path.parent
+    return False
+
+
 def repo_relative_path(repo_root: Path, path: Path) -> str:
-    return ensure_inside_repo(repo_root, path).relative_to(resolved_path(repo_root)).as_posix()
+    return ensure_action_inside_repo(repo_root, path).relative_to(resolved_path(repo_root)).as_posix()
 
 
 def add_unique(values: list[str], value: str) -> None:
@@ -177,6 +221,23 @@ def new_manifest(repo_root: Path) -> dict[str, Any]:
 
 def manifest_path(repo_root: Path) -> Path:
     return repo_root / ".codex" / PROJECT_MANIFEST_NAME
+
+
+def validate_project_content_path(repo_root: Path, path: Path, field: str) -> Path:
+    try:
+        ensure_inside_repo(repo_root, path)
+    except (OSError, RuntimeError, ValueError):
+        raise_manifest_error(repo_root, field, "resolves outside the repository root")
+    return lexical_path(path)
+
+
+def validate_project_uninstall_fixed_paths(repo_root: Path) -> None:
+    for relative_path in PROJECT_UNINSTALL_CONTENT_PATHS:
+        validate_project_content_path(
+            repo_root,
+            repo_root / relative_path,
+            f"fixed path {relative_path.as_posix()}",
+        )
 
 
 def load_project_manifest(repo_root: Path) -> dict[str, Any]:
@@ -210,18 +271,88 @@ def resolve_manifest_action_path(repo_root: Path, value: object, field: str) -> 
     if ".." in relative_path.parts:
         raise_manifest_error(repo_root, field, "must not contain parent traversal")
 
-    resolved_repo_root = resolved_path(repo_root)
-    action_path = resolved_repo_root / relative_path
     try:
-        resolved_target = resolved_path(action_path)
+        resolved_repo_root = resolved_path(repo_root)
+        action_path = lexical_path(resolved_repo_root / relative_path)
     except (OSError, RuntimeError, ValueError):
         raise_manifest_error(repo_root, field, "cannot be resolved safely")
-
-    if resolved_target == resolved_repo_root:
+    if action_path == resolved_repo_root:
         raise_manifest_error(repo_root, field, "must not target the repository root")
-    if not resolved_target.is_relative_to(resolved_repo_root):
-        raise_manifest_error(repo_root, field, "resolves outside the repository root")
-    return action_path
+    try:
+        return ensure_action_inside_repo(resolved_repo_root, action_path)
+    except (OSError, RuntimeError, ValueError):
+        raise_manifest_error(repo_root, field, "has a parent that resolves outside the repository root")
+
+
+def legacy_link_target_skill_name(value: object) -> str | None:
+    if not isinstance(value, str) or value == "":
+        return None
+    relative_path = Path(value)
+    if relative_path.is_absolute() or relative_path.drive or ".." in relative_path.parts:
+        return None
+    for skill_name in [USING_SKILL_NAME, PLUGIN_NAME]:
+        suffix = ("plugin", PLUGIN_NAME, "skills", skill_name)
+        if relative_path.parts[-len(suffix):] == suffix:
+            return skill_name
+    return None
+
+
+def symlink_target_path(path: Path) -> Path:
+    target = Path(os.readlink(path))
+    if not target.is_absolute():
+        target = path.parent / target
+    return lexical_path(target)
+
+
+def migrate_legacy_linked_skill_entries(repo_root: Path, manifest: dict[str, Any]) -> None:
+    if manifest.get("version") != 1:
+        return
+    installed_paths = manifest.get("installed_paths")
+    if not isinstance(installed_paths, list):
+        return
+
+    old_repo_root = None
+    old_repo_root_value = manifest.get("repo_root")
+    if isinstance(old_repo_root_value, str):
+        old_repo_root_path = Path(old_repo_root_value)
+        if old_repo_root_path.is_absolute():
+            old_repo_root = lexical_path(old_repo_root_path)
+    resolved_repo_root = resolved_path(repo_root)
+    migrated_paths: list[Any] = []
+    for index, value in enumerate(installed_paths):
+        skill_name = legacy_link_target_skill_name(value)
+        if skill_name is None:
+            if value not in migrated_paths:
+                migrated_paths.append(value)
+            continue
+
+        link_path = resolved_repo_root / ".agents" / "skills" / skill_name
+        try:
+            relative_target = Path(value)
+            current_target = lexical_path(resolved_repo_root / relative_target)
+            resolved_current_target = resolved_path(current_target)
+            expected_link_targets = {current_target}
+            if old_repo_root is not None:
+                expected_link_targets.add(lexical_path(old_repo_root / relative_target))
+            can_migrate = (
+                link_path.is_symlink()
+                and symlink_target_path(link_path) in expected_link_targets
+                and resolved_current_target.is_relative_to(resolved_repo_root)
+                and (resolved_current_target / "SKILL.md").is_file()
+            )
+        except (OSError, RuntimeError, ValueError):
+            can_migrate = False
+        if not can_migrate:
+            raise_manifest_error(
+                repo_root,
+                f"installed_paths[{index}]",
+                "cannot be safely attributed to a legacy linked skill",
+            )
+        link_value = repo_relative_path(repo_root, link_path)
+        if link_value not in migrated_paths:
+            migrated_paths.append(link_value)
+
+    manifest["installed_paths"] = migrated_paths
 
 
 def validated_manifest_path_entries(
@@ -232,21 +363,33 @@ def validated_manifest_path_entries(
     values = manifest.get(field, [])
     if not isinstance(values, list):
         raise_manifest_error(repo_root, field, "must be a list")
-    return [
-        (value, resolve_manifest_action_path(repo_root, value, f"{field}[{index}]"))
-        for index, value in enumerate(values)
-    ]
+    resolved_repo_root = resolved_path(repo_root)
+    validated_entries: list[tuple[str, Path]] = []
+    for index, value in enumerate(values):
+        path = resolve_manifest_action_path(repo_root, value, f"{field}[{index}]")
+        validated_entries.append((path.relative_to(resolved_repo_root).as_posix(), path))
+    return validated_entries
+
+
+@dataclass(frozen=True)
+class ValidatedManifestBackup:
+    index: int
+    relative_path: str
+    path: Path
+    relative_backup_path: str
+    backup_path: Path
 
 
 def validated_manifest_backups(
     repo_root: Path,
     manifest: dict[str, Any],
-) -> list[tuple[str, Path, Path]]:
+) -> list[ValidatedManifestBackup]:
     backups = manifest.get("backups", [])
     if not isinstance(backups, list):
         raise_manifest_error(repo_root, "backups", "must be a list")
 
-    validated_backups: list[tuple[str, Path, Path]] = []
+    resolved_repo_root = resolved_path(repo_root)
+    validated_backups: list[ValidatedManifestBackup] = []
     for index, backup in enumerate(backups):
         if not isinstance(backup, dict):
             raise_manifest_error(repo_root, f"backups[{index}]", "must be an object")
@@ -258,14 +401,44 @@ def validated_manifest_backups(
             backup_path_value,
             f"backups[{index}].backup_path",
         )
-        validated_backups.append((path_value, path, backup_path))
+        validated_backups.append(ValidatedManifestBackup(
+            index=index,
+            relative_path=path.relative_to(resolved_repo_root).as_posix(),
+            path=path,
+            relative_backup_path=backup_path.relative_to(resolved_repo_root).as_posix(),
+            backup_path=backup_path,
+        ))
     return validated_backups
+
+
+def paths_overlap(first: Path, second: Path) -> bool:
+    return first == second or first.is_relative_to(second) or second.is_relative_to(first)
+
+
+def validate_manifest_backup_topology(
+    repo_root: Path,
+    backups: list[ValidatedManifestBackup],
+) -> None:
+    endpoints: list[tuple[str, Path]] = []
+    for backup in backups:
+        if backup.relative_path in SPECIALLY_PATCHED_PROJECT_PATHS:
+            continue
+        endpoints.extend([
+            (f"backups[{backup.index}].path", backup.path),
+            (f"backups[{backup.index}].backup_path", backup.backup_path),
+        ])
+
+    for first_index, (first_field, first_path) in enumerate(endpoints):
+        for second_field, second_path in endpoints[first_index + 1:]:
+            if paths_overlap(first_path, second_path):
+                raise_manifest_error(repo_root, first_field, f"overlaps {second_field}")
 
 
 def validate_project_manifest_paths(repo_root: Path, manifest: dict[str, Any]) -> None:
     validated_manifest_path_entries(repo_root, manifest, "installed_paths")
     validated_manifest_path_entries(repo_root, manifest, "created_paths")
-    validated_manifest_backups(repo_root, manifest)
+    backups = validated_manifest_backups(repo_root, manifest)
+    validate_manifest_backup_topology(repo_root, backups)
 
 
 def record_created_path(manifest: dict[str, Any], repo_root: Path, path: Path) -> None:
@@ -814,15 +987,21 @@ def remove_installed_project_paths(repo_root: Path, manifest: dict[str, Any], dr
 
 
 def restore_backups(repo_root: Path, manifest: dict[str, Any], dry_run: bool) -> None:
-    specially_patched_paths = {
-        ".codex/config.toml",
-        ".agents/plugins/marketplace.json",
-        "AGENTS.md",
-    }
     backups = validated_manifest_backups(repo_root, manifest)
-    for relative_path, path, backup_path in reversed(backups):
-        if relative_path in specially_patched_paths:
+    validate_manifest_backup_topology(repo_root, backups)
+    for backup in reversed(backups):
+        if backup.relative_path in SPECIALLY_PATCHED_PROJECT_PATHS:
             continue
+        path = resolve_manifest_action_path(
+            repo_root,
+            backup.relative_path,
+            f"backups[{backup.index}].path",
+        )
+        backup_path = resolve_manifest_action_path(
+            repo_root,
+            backup.relative_backup_path,
+            f"backups[{backup.index}].backup_path",
+        )
         if not path_exists(backup_path):
             continue
         if dry_run:
@@ -835,15 +1014,18 @@ def restore_backups(repo_root: Path, manifest: dict[str, Any], dry_run: bool) ->
 
 
 def remove_empty_parent_dirs(repo_root: Path, dry_run: bool) -> None:
-    for relative_path in [
-        Path(".codex") / "agents",
-        Path(".codex") / "hooks",
-        Path(".agents") / "skills",
-        Path(".agents") / "plugins",
-        Path(".codex"),
-        Path(".agents"),
-    ]:
+    for relative_path in PROJECT_CLEANUP_PATHS:
         path = repo_root / relative_path
+        if path_has_symlink_component(repo_root, path):
+            continue
+        try:
+            path = ensure_action_inside_repo(repo_root, path)
+        except (OSError, RuntimeError, ValueError):
+            raise_manifest_error(
+                repo_root,
+                f"cleanup path {relative_path.as_posix()}",
+                "cannot be resolved safely",
+            )
         if path.exists() and path.is_dir() and not any(path.iterdir()):
             if dry_run:
                 print(f"would remove empty directory: {path}")
@@ -854,11 +1036,13 @@ def remove_empty_parent_dirs(repo_root: Path, dry_run: bool) -> None:
 
 def uninstall_project(args: argparse.Namespace) -> int:
     repo_root = detect_repo_root(args.repo_root)
-    manifest_file = manifest_path(repo_root)
+    manifest_file = validate_project_content_path(repo_root, manifest_path(repo_root), "path")
     if not manifest_file.exists():
         print(f"no project install manifest found: {manifest_file}")
         return 0
     manifest = load_project_manifest(repo_root)
+    validate_project_uninstall_fixed_paths(repo_root)
+    migrate_legacy_linked_skill_entries(repo_root, manifest)
     validate_project_manifest_paths(repo_root, manifest)
     restore_project_config(repo_root, manifest, args.dry_run)
     restore_project_marketplace(repo_root, manifest, args.dry_run)
@@ -868,6 +1052,10 @@ def uninstall_project(args: argparse.Namespace) -> int:
     if args.dry_run:
         print(f"would remove install manifest: {manifest_file}")
     else:
+        try:
+            manifest_file = ensure_action_inside_repo(repo_root, manifest_file)
+        except (OSError, RuntimeError, ValueError):
+            raise_manifest_error(repo_root, "path", "cannot be removed safely")
         manifest_file.unlink()
         print(f"removed install manifest: {manifest_file}")
     remove_empty_parent_dirs(repo_root, args.dry_run)

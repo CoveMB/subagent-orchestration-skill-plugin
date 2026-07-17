@@ -314,6 +314,29 @@ def prepare_vendored_plugin(repo: Path) -> Path:
     return vendor_root
 
 
+def install_linked_project(root: Path) -> tuple[Path, Path, Path, Path]:
+    home = root / "home"
+    app_home = root / "app"
+    repo = root / "repo"
+    repo.mkdir()
+    vendor_root = prepare_vendored_plugin(repo)
+    proc = run_installer(
+        [
+            "--scope",
+            "project",
+            "--repo-root",
+            str(repo),
+            "--from-vendor",
+            str(vendor_root),
+            "--link-skills",
+        ],
+        home,
+        app_home,
+    )
+    assert_installer_ok(proc)
+    return home, app_home, repo, vendor_root
+
+
 def install_manifest_test_project(root: Path, repo_name: str = "repo") -> tuple[Path, Path, Path]:
     home = root / "home"
     app_home = root / "app"
@@ -343,6 +366,18 @@ def read_project_manifest(repo: Path) -> dict[str, object]:
 
 def write_project_manifest(repo: Path, manifest: dict[str, object]) -> None:
     project_manifest_path(repo).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
+def new_project_manifest(repo: Path) -> dict[str, object]:
+    return {
+        "version": 1,
+        "plugin": "subagent-orchestrator",
+        "repo_root": str(repo.resolve()),
+        "installed_paths": [],
+        "created_paths": [],
+        "backups": [],
+        "config_values": {},
+    }
 
 
 def snapshot_tree(root: Path) -> dict[str, tuple[str, bytes | str | None]]:
@@ -1019,12 +1054,101 @@ def test_project_uninstall_dry_run_rejects_unsafe_manifest_without_destructive_o
 def test_project_uninstall_preserves_in_repo_symlink_target() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
-        home = root / "home"
-        app_home = root / "app"
+        home, app_home, repo, vendor_root = install_linked_project(root)
+        linked_skill = project_skill_path(repo, "subagent-orchestrator")
+        linked_using_skill = project_skill_path(repo, "using-subagent-orchestrator")
+        target_skill = vendor_root / "plugin" / "subagent-orchestrator" / "skills" / "subagent-orchestrator"
+        target_using_skill = vendor_root / "plugin" / "subagent-orchestrator" / "skills" / "using-subagent-orchestrator"
+        assert linked_skill.is_symlink()
+        assert linked_using_skill.is_symlink()
+        manifest = read_project_manifest(repo)
+        assert set(manifest["installed_paths"]) == {
+            ".agents/skills/subagent-orchestrator",
+            ".agents/skills/using-subagent-orchestrator",
+        }
+
+        uninstall_proc = run_project_uninstall(repo, home, app_home)
+
+        assert_installer_ok(uninstall_proc)
+        assert not linked_skill.is_symlink()
+        assert not linked_using_skill.is_symlink()
+        assert (target_skill / "SKILL.md").exists()
+        assert (target_using_skill / "SKILL.md").exists()
+
+
+def test_project_uninstall_migrates_legacy_link_target_manifest_entries() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        home, app_home, repo, vendor_root = install_linked_project(root)
+        manifest = read_project_manifest(repo)
+        manifest["installed_paths"] = [
+            "vendor/subagent-orchestration-skill-plugin/plugin/subagent-orchestrator/skills/using-subagent-orchestrator",
+            "vendor/subagent-orchestration-skill-plugin/plugin/subagent-orchestrator/skills/subagent-orchestrator",
+        ]
+        write_project_manifest(repo, manifest)
+
+        uninstall_proc = run_project_uninstall(repo, home, app_home)
+
+        assert_installer_ok(uninstall_proc)
+        assert not project_skill_path(repo, "subagent-orchestrator").is_symlink()
+        assert not project_skill_path(repo, "using-subagent-orchestrator").is_symlink()
+        assert (vendor_root / "plugin" / "subagent-orchestrator" / "skills" / "subagent-orchestrator" / "SKILL.md").exists()
+        assert (vendor_root / "plugin" / "subagent-orchestrator" / "skills" / "using-subagent-orchestrator" / "SKILL.md").exists()
+
+
+def test_project_uninstall_rejects_unverifiable_legacy_link_target_manifest_entry() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        home, app_home, repo, _ = install_linked_project(root)
+        manifest = read_project_manifest(repo)
+        manifest["installed_paths"] = [
+            "vendor/subagent-orchestration-skill-plugin/plugin/subagent-orchestrator/skills/using-subagent-orchestrator",
+            "vendor/subagent-orchestration-skill-plugin/plugin/subagent-orchestrator/skills/subagent-orchestrator",
+        ]
+        write_project_manifest(repo, manifest)
+        project_skill_path(repo, "subagent-orchestrator").unlink()
+        repo_before = snapshot_tree(repo)
+
+        uninstall_proc = run_project_uninstall(repo, home, app_home)
+
+        assert_project_manifest_rejected(uninstall_proc, "installed_paths[1]")
+        assert snapshot_tree(repo) == repo_before
+
+
+def test_project_uninstall_accepts_linked_manifest_after_repo_move() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        home, app_home, repo, _ = install_linked_project(root)
+        moved_repo = root / "moved-repo"
+        repo.rename(moved_repo)
+        target_skill = moved_repo / "vendor" / "subagent-orchestration-skill-plugin" / "plugin" / "subagent-orchestrator" / "skills" / "subagent-orchestrator"
+        target_using_skill = moved_repo / "vendor" / "subagent-orchestration-skill-plugin" / "plugin" / "subagent-orchestrator" / "skills" / "using-subagent-orchestrator"
+
+        uninstall_proc = run_project_uninstall(moved_repo, home, app_home)
+
+        assert_installer_ok(uninstall_proc)
+        assert not project_skill_path(moved_repo, "subagent-orchestrator").is_symlink()
+        assert not project_skill_path(moved_repo, "using-subagent-orchestrator").is_symlink()
+        assert (target_skill / "SKILL.md").exists()
+        assert (target_using_skill / "SKILL.md").exists()
+
+
+def test_project_uninstall_restores_preexisting_skill_symlink() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
         repo = root / "repo"
         repo.mkdir()
+        local_skill = repo / "local-skill"
+        local_skill.mkdir()
+        (local_skill / "SKILL.md").write_text("local skill\n", encoding="utf-8")
+        existing_link = project_skill_path(repo, "subagent-orchestrator")
+        existing_link.parent.mkdir(parents=True)
+        existing_link.symlink_to(local_skill, target_is_directory=True)
+        home = root / "home"
+        app_home = root / "app"
         vendor_root = prepare_vendored_plugin(repo)
-        proc = run_installer(
+
+        install_proc = run_installer(
             [
                 "--scope",
                 "project",
@@ -1037,27 +1161,19 @@ def test_project_uninstall_preserves_in_repo_symlink_target() -> None:
             home,
             app_home,
         )
-        assert_installer_ok(proc)
-        linked_skill = project_skill_path(repo, "subagent-orchestrator")
-        linked_using_skill = project_skill_path(repo, "using-subagent-orchestrator")
-        target_skill = vendor_root / "plugin" / "subagent-orchestrator" / "skills" / "subagent-orchestrator"
-        target_using_skill = vendor_root / "plugin" / "subagent-orchestrator" / "skills" / "using-subagent-orchestrator"
-        assert linked_skill.is_symlink()
-        assert linked_using_skill.is_symlink()
+        assert_installer_ok(install_proc)
         manifest = read_project_manifest(repo)
-        manifest["installed_paths"] = [
-            ".agents/skills/subagent-orchestrator",
-            ".agents/skills/using-subagent-orchestrator",
-        ]
-        write_project_manifest(repo, manifest)
+        assert {
+            "path": ".agents/skills/subagent-orchestrator",
+            "backup_path": ".agents/skills/subagent-orchestrator.bak",
+        } in manifest["backups"]
 
         uninstall_proc = run_project_uninstall(repo, home, app_home)
 
         assert_installer_ok(uninstall_proc)
-        assert not linked_skill.is_symlink()
-        assert not linked_using_skill.is_symlink()
-        assert (target_skill / "SKILL.md").exists()
-        assert (target_using_skill / "SKILL.md").exists()
+        assert existing_link.is_symlink()
+        assert existing_link.resolve() == local_skill.resolve()
+        assert (local_skill / "SKILL.md").read_text(encoding="utf-8") == "local skill\n"
 
 
 def test_project_uninstall_rejects_absolute_backup_destination_before_mutation() -> None:
@@ -1106,6 +1222,108 @@ def test_project_uninstall_rejects_symlink_parent_escape() -> None:
 
 def test_project_uninstall_rejects_traversal_backup_source_before_special_path_skip() -> None:
     assert_unsafe_backup_path_is_rejected("backup_path")
+
+
+def test_project_uninstall_rejects_backup_restore_that_changes_later_path_topology() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        home = root / "home"
+        app_home = root / "app"
+        repo = root / "repo"
+        outside = root / "outside"
+        repo.mkdir()
+        outside.mkdir()
+        sentinel = outside / "sentinel.txt"
+        sentinel.write_text("outside sentinel\n", encoding="utf-8")
+        (repo / "payload.bak").write_text("manifest payload\n", encoding="utf-8")
+        staged_parent = repo / "staged-parent"
+        staged_parent.mkdir()
+        (staged_parent / "escape").symlink_to(outside, target_is_directory=True)
+        manifest = new_project_manifest(repo)
+        manifest["backups"] = [
+            {"path": "parent/escape/sentinel.txt", "backup_path": "payload.bak"},
+            {"path": "parent", "backup_path": "staged-parent"},
+        ]
+        project_manifest_path(repo).parent.mkdir()
+        write_project_manifest(repo, manifest)
+        repo_before = snapshot_tree(repo)
+        outside_before = snapshot_tree(outside)
+
+        uninstall_proc = run_project_uninstall(repo, home, app_home)
+
+        assert_project_manifest_rejected(uninstall_proc, "backups")
+        assert snapshot_tree(repo) == repo_before
+        assert snapshot_tree(outside) == outside_before
+
+
+def test_project_uninstall_rejects_manifest_through_outside_symlink_parent() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        home = root / "home"
+        app_home = root / "app"
+        repo = root / "repo"
+        outside_codex = root / "outside-codex"
+        repo.mkdir()
+        outside_codex.mkdir()
+        (repo / ".codex").symlink_to(outside_codex, target_is_directory=True)
+        outside_manifest = outside_codex / "subagent-orchestrator-install.json"
+        outside_manifest.write_text(json.dumps(new_project_manifest(repo)), encoding="utf-8")
+        repo_before = snapshot_tree(repo)
+        outside_before = snapshot_tree(outside_codex)
+
+        uninstall_proc = run_project_uninstall(repo, home, app_home)
+
+        assert_project_manifest_rejected(uninstall_proc, "path")
+        assert snapshot_tree(repo) == repo_before
+        assert snapshot_tree(outside_codex) == outside_before
+
+
+def test_project_uninstall_rejects_fixed_marketplace_through_outside_symlink_parent() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        home = root / "home"
+        app_home = root / "app"
+        repo = root / "repo"
+        outside_agents = root / "outside-agents"
+        repo.mkdir()
+        outside_agents.mkdir()
+        (repo / ".agents").symlink_to(outside_agents, target_is_directory=True)
+        outside_marketplace = outside_agents / "plugins" / "marketplace.json"
+        outside_marketplace.parent.mkdir()
+        outside_marketplace.write_text(
+            json.dumps({"plugins": [{"name": "subagent-orchestrator"}]}) + "\n",
+            encoding="utf-8",
+        )
+        project_manifest_path(repo).parent.mkdir()
+        write_project_manifest(repo, new_project_manifest(repo))
+        repo_before = snapshot_tree(repo)
+        outside_before = snapshot_tree(outside_agents)
+
+        uninstall_proc = run_project_uninstall(repo, home, app_home)
+
+        assert_project_manifest_rejected(uninstall_proc, ".agents/plugins/marketplace.json")
+        assert snapshot_tree(repo) == repo_before
+        assert snapshot_tree(outside_agents) == outside_before
+
+
+def test_project_uninstall_ignores_symlinked_cleanup_directory() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        home = root / "home"
+        app_home = root / "app"
+        repo = root / "repo"
+        repo.mkdir()
+        cleanup_target = repo / "cleanup-target"
+        cleanup_target.mkdir()
+        project_manifest_path(repo).parent.mkdir()
+        (repo / ".codex" / "agents").symlink_to(cleanup_target, target_is_directory=True)
+        write_project_manifest(repo, new_project_manifest(repo))
+
+        uninstall_proc = run_project_uninstall(repo, home, app_home)
+
+        assert_installer_ok(uninstall_proc)
+        assert (repo / ".codex" / "agents").is_symlink()
+        assert cleanup_target.is_dir()
 
 
 def test_project_uninstall_rejects_traversal_installed_path_before_mutation() -> None:
